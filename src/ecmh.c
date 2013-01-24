@@ -111,9 +111,9 @@ struct lookup
 	{ ICMP6_PARAM_PROB,			"Parameter Problem"			},
 	{ ICMP6_ECHO_REQUEST,			"Echo Request"				},
 	{ ICMP6_ECHO_REPLY,			"Echo Reply"				},
-	{ ICMP6_MEMBERSHIP_QUERY,		"Membership Query"			},
-	{ ICMP6_MEMBERSHIP_REPORT,		"Membership Report"			},
-	{ ICMP6_MEMBERSHIP_REDUCTION,		"Membership Reduction"			},
+	{ MLD_LISTENER_QUERY,		"Membership Query"			},
+	{ MLD_LISTENER_REPORT,		"Membership Report"			},
+	{ MLD_LISTENER_REDUCTION,		"Membership Reduction"			},
 	{ ICMP6_V2_MEMBERSHIP_REPORT,		"Membership Report (V2)"		},
 	{ ICMP6_V2_MEMBERSHIP_REPORT_EXP,	"Membership Report (V2) - Experimental"	},
 	{ ND_ROUTER_SOLICIT,			"ND Router Solicitation"		},
@@ -130,7 +130,6 @@ struct lookup
 }, icmpv6_codes_unreach[] = {
 	{ ICMP6_DST_UNREACH_NOROUTE,		"No route to destination"		},
 	{ ICMP6_DST_UNREACH_ADMIN,		"Administratively prohibited"		},
-	{ ICMP6_DST_UNREACH_NOTNEIGHBOR,	"Not a neighbor (obsolete)"		},
 	{ ICMP6_DST_UNREACH_BEYONDSCOPE,	"Beyond scope of source address"	},
 	{ ICMP6_DST_UNREACH_ADDR,		"Address Unreachable"			},
 	{ ICMP6_DST_UNREACH_NOPORT,		"Port Unreachable"			},
@@ -453,7 +452,7 @@ void mld_send_query(struct intnode *intn, const struct in6_addr *mca, const stru
 	packet.routeralert.optpad[1]	= 0;
 
 	/* ICMPv6 MLD Query */
-	packet.mldq.type		= ICMP6_MEMBERSHIP_QUERY;
+	packet.mldq.type		= MLD_LISTENER_QUERY;
 	packet.mldq.mrc			= htons(2000);
 
 	/*
@@ -563,7 +562,7 @@ void mld1_send_report(struct intnode *intn, const struct in6_addr *mca)
 	packet.routeralert.optpad[1]	= 0;
 
 	/* ICMPv6 MLD Report */
-	packet.mld1.type		= ICMP6_MEMBERSHIP_REPORT;
+	packet.mld1.type		= MLD_LISTENER_REPORT;
 	packet.mld1.mrc			= 0;
 	memcpy(&packet.mld1.mca, mca, sizeof(*mca));
 
@@ -1511,13 +1510,13 @@ void l4_ipv6_icmpv6(struct intnode *intn, struct ip6_hdr *iph, const uint16_t le
 	 * We are only interrested in these types
 	 * Saves on calculating a checksum and then ignoring it anyways
 	 */
-	if (	icmpv6->icmp6_type != ICMP6_MEMBERSHIP_REPORT &&
-		icmpv6->icmp6_type != ICMP6_MEMBERSHIP_REDUCTION &&
+	if (	icmpv6->icmp6_type != MLD_LISTENER_REPORT &&
+		icmpv6->icmp6_type != MLD_LISTENER_REDUCTION &&
 #ifdef ECMH_SUPPORT_MLD2
 		icmpv6->icmp6_type != ICMP6_V2_MEMBERSHIP_REPORT &&
 		icmpv6->icmp6_type != ICMP6_V2_MEMBERSHIP_REPORT_EXP &&
 #endif
-		icmpv6->icmp6_type != ICMP6_MEMBERSHIP_QUERY &&
+		icmpv6->icmp6_type != MLD_LISTENER_QUERY &&
 		icmpv6->icmp6_type != ICMP6_ECHO_REQUEST)
 	{
 		dolog(LOG_DEBUG, "Ignoring ICMPv6: %s (%u), %s (%u) received on %s\n",
@@ -1576,11 +1575,11 @@ void l4_ipv6_icmpv6(struct intnode *intn, struct ip6_hdr *iph, const uint16_t le
 			return;
 		}
 
-		if (icmpv6->icmp6_type == ICMP6_MEMBERSHIP_REPORT)
+		if (icmpv6->icmp6_type == MLD_LISTENER_REPORT)
 		{
 			l4_ipv6_icmpv6_mld1_report(intn, iph, len, (struct mld1 *)icmpv6, plen);
 		}
-		else if (icmpv6->icmp6_type == ICMP6_MEMBERSHIP_REDUCTION)
+		else if (icmpv6->icmp6_type == MLD_LISTENER_REDUCTION)
 		{
 			l4_ipv6_icmpv6_mld1_reduction(intn, iph, len, (struct mld1 *)icmpv6, plen);
 		}
@@ -1591,7 +1590,7 @@ void l4_ipv6_icmpv6(struct intnode *intn, struct ip6_hdr *iph, const uint16_t le
 			l4_ipv6_icmpv6_mld2_report(intn, iph, len, (struct mld2_report *)icmpv6, plen);
 		}
 #endif /* ECMH_SUPPORT_MLD2 */
-		else if (icmpv6->icmp6_type == ICMP6_MEMBERSHIP_QUERY)
+		else if (icmpv6->icmp6_type == MLD_LISTENER_QUERY)
 		{
 			l4_ipv6_icmpv6_mld_query(intn, iph, len, (struct mld2_query *)icmpv6, plen);
 		}
