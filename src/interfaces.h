@@ -46,6 +46,7 @@ struct intnode
 	uint64_t	stat_icmp_sent;		/* Number of ICMP's sent */
 
 	bool		upstream;		/* This interface is an upstream */
+	bool		downstream;		/* This interface is a downstream */
 };
 
 /* Node functions */

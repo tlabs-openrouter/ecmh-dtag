@@ -93,7 +93,10 @@ struct conf
 	struct list		*groups;			/* The groups we are joined to */
 
 	char			*upstream;			/* Upstream interface */
-	unsigned int		upstream_id;			/* Interface ID of upstream interface */
+	unsigned int	upstream_id;			/* Interface ID of upstream interface */
+
+	char			*downstream;			/* Downstream interface */
+	unsigned int	downstream_id;			/* Interface ID of downstream interface */
 
 	bool			daemonize;			/* To Daemonize or to not to Daemonize */
 	bool			verbose;			/* Verbose Operation ? */
@@ -103,7 +106,7 @@ struct conf
 	bool			mld2only;			/* Only MLDv2 ? */
 #endif
 	bool			promisc;			/* Make interfaces promisc? (To be sure to receive all MLD's) */
-	
+
 	uint8_t			*buffer;			/* Our buffer */
 	unsigned int		bufferlen;			/* Length of the buffer */
 

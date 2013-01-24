@@ -192,7 +192,7 @@ struct intnode *int_create(unsigned int ifindex, bool tunnel)
 	intn = &g_conf->ints[ifindex];
 
 #ifndef ECMH_BPF
-	dolog(LOG_DEBUG, "Creating new interface %u\n", ifindex);
+	//dolog(LOG_DEBUG, "Creating new interface %u\n", ifindex);
 #else
 	dolog(LOG_DEBUG, "Creating new interface %u (%s)\n", ifindex, tunnel ? "Tunnel" : "Native");
 #endif
@@ -271,6 +271,13 @@ struct intnode *int_create(unsigned int ifindex, bool tunnel)
 	}
 #endif
 
+	if (! ((!strcmp(intn->name, g_conf->upstream)) || (!strcmp(intn->name, g_conf->downstream)))) {
+		//dolog(LOG_WARNING, "not using interface %s %s %s.\n", intn->name, g_conf->upstream, g_conf->downstream);
+		int_destroy(intn);
+		close(sock);
+		return NULL;
+	}
+
 #ifdef ECMH_BPF
 	if (!int_create_bpf(intn, tunnel))
 	{
@@ -287,7 +294,7 @@ struct intnode *int_create(unsigned int ifindex, bool tunnel)
 
 		memset(&ifr, 0, sizeof(ifr));
 		strncpy(ifr.ifr_name, intn->name, sizeof(ifr.ifr_name));
-        	err = ioctl(sock, SIOCGIFFLAGS, &ifr);
+		err = ioctl(sock, SIOCGIFFLAGS, &ifr);
 		if (err)
 		{
 			dolog(LOG_WARNING, "Couldn't get interface flags of %u/%s: %s\n",
@@ -317,6 +324,14 @@ struct intnode *int_create(unsigned int ifindex, bool tunnel)
 		g_conf->upstream_id = intn->ifindex;
 	}
 	else intn->upstream = false;
+
+	if (	g_conf->downstream &&
+		strcasecmp(intn->name, g_conf->downstream) == 0)
+	{
+		intn->downstream = true;
+		g_conf->downstream_id = intn->ifindex;
+	}
+	else intn->downstream = false;
 
 	/* All okay */
 	return intn;

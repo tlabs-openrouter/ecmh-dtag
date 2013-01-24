@@ -1877,6 +1877,7 @@ void update_interfaces(struct intnode *intn)
 
 			/* Not Found? -> Create the interface */
 			if (	!intn &&
+					((!strcmp(ifa->ifa_name, g_conf->upstream) || (!strcmp(ifa->ifa_name, g_conf->upstream)))) &&
 #ifndef ECMH_BPF
 				(intn = int_create(ifindex)))
 #else
@@ -2450,7 +2451,8 @@ bool handleinterfaces(uint8_t *buffer)
 	}
 	else
 	{
-		dolog(LOG_ERR, "Couldn't find interface link %u\n", i);
+		if ( intn == g_conf->upstream_id || intn == g_conf->downstream_id)
+			dolog(LOG_ERR, "Couldn't find interface link %u\n", i);
 	}
 	return true;
 #else /* !ECMH_BPF */
@@ -2516,6 +2518,7 @@ bool handleinterfaces(uint8_t *buffer)
 static struct option const long_options[] = {
 	{"foreground",		no_argument,		NULL, 'f'},
 	{"upstream",		required_argument,	NULL, 'i'},
+	{"downstream",		required_argument,	NULL, 'd'},
 	{"promisc",		no_argument,		NULL, 'p'},
 	{"nopromisc",		no_argument,		NULL, 'P'},
 	{"user",		required_argument,	NULL, 'u'},
@@ -2543,7 +2546,7 @@ int main(int argc, char *argv[])
 	init();
 
 	/* Handle arguments */
-	while ((i = getopt_long(argc, argv, "fi:pPu:"
+	while ((i = getopt_long(argc, argv, "fi:d:pPu:"
 #ifdef ECMH_BPF
 		"tT"
 #endif
@@ -2571,7 +2574,15 @@ int main(int argc, char *argv[])
 			}
 			g_conf->upstream = strdup(optarg);
 			break;
-			
+
+		case 'd':
+			if (g_conf->downstream)
+			{
+				fprintf(stderr, "Only one downstream interface (was: %s) can be specified\n", g_conf->downstream);
+				return -1;
+			}
+			g_conf->downstream = strdup(optarg);
+			break;
 		case 'p':
 			g_conf->promisc = true;
 			break;
@@ -2633,6 +2644,7 @@ int main(int argc, char *argv[])
 				"-f, --foreground           don't daemonize\n"
 				"-u, --user username        drop (setuid+setgid) to user after startup\n"
 				"-i, --upstream interface   upstream interface\n"
+				"-d, --downstream interface downsteram interface\n"
 #ifdef ECMH_BPF
 				"-t, --tunnelmode           Don't attach to tunnels, but use proto-41 decapsulation (default)\n"
 				"-T, --notunnelmode         Attach to tunnels seperatly\n"
@@ -2712,6 +2724,11 @@ int main(int argc, char *argv[])
 	if (g_conf->upstream)
 	{
 		dolog(LOG_INFO, "Using %s as an upstream interface\n", g_conf->upstream);
+	}
+
+	if (g_conf->downstream)
+	{
+		dolog(LOG_INFO, "Using %s as an downstream interface\n", g_conf->downstream);
 	}
 
 #ifdef ECMH_SUPPORT_MLD2
