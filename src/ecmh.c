@@ -1877,7 +1877,7 @@ void update_interfaces(struct intnode *intn)
 
 			/* Not Found? -> Create the interface */
 			if (	!intn &&
-					((!strcmp(ifa->ifa_name, g_conf->upstream) || (!strcmp(ifa->ifa_name, g_conf->upstream)))) &&
+					((!strcmp(ifa->ifa_name, g_conf->upstream) || (!strcmp(ifa->ifa_name, g_conf->downstream)))) &&
 #ifndef ECMH_BPF
 				(intn = int_create(ifindex)))
 #else
@@ -2430,6 +2430,10 @@ bool handleinterfaces(uint8_t *buffer)
 	/* The interface we need to find */
 	i = sa.sll_ifindex;
 
+	if ( ! (i == g_conf->upstream_id || i == g_conf->downstream_id)) {
+		return true;
+	}
+
 	intn = int_find(i);
 	if (!intn)
 	{
@@ -2451,8 +2455,7 @@ bool handleinterfaces(uint8_t *buffer)
 	}
 	else
 	{
-		if ( intn == g_conf->upstream_id || intn == g_conf->downstream_id)
-			dolog(LOG_ERR, "Couldn't find interface link %u\n", i);
+		dolog(LOG_ERR, "Couldn't find interface link %u\n", i);
 	}
 	return true;
 #else /* !ECMH_BPF */

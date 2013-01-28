@@ -272,7 +272,6 @@ struct intnode *int_create(unsigned int ifindex, bool tunnel)
 #endif
 
 	if (! ((!strcmp(intn->name, g_conf->upstream)) || (!strcmp(intn->name, g_conf->downstream)))) {
-		//dolog(LOG_WARNING, "not using interface %s %s %s.\n", intn->name, g_conf->upstream, g_conf->downstream);
 		int_destroy(intn);
 		close(sock);
 		return NULL;
@@ -339,7 +338,7 @@ struct intnode *int_create(unsigned int ifindex, bool tunnel)
 
 void int_destroy(struct intnode *intn)
 {
-D(	dolog(LOG_DEBUG, "Destroying interface %s\n", intn->name);)
+//D(	dolog(LOG_DEBUG, "Destroying interface %s\n", intn->name);)
 
 #ifdef ECMH_BPF
 	if (intn->socket != -1)
