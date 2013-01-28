@@ -17,16 +17,16 @@ SRCS	= mtrace6.c
 INCS	= ../../src/trace.h
 DEPS	= ../../Makefile ../Makefile Makefile
 OBJS	= mtrace6.o
-CFLAGS	= -W -Wall -Wno-unused -D_GNU_SOURCE -D'ECMH_VERSION="$(ECMH_VERSION)"' $(ECMH_OPTIONS)
+CFLAGS	+= -W -Wall -Wno-unused -D_GNU_SOURCE -D'ECMH_VERSION="$(ECMH_VERSION)"' $(ECMH_OPTIONS)
 LDFLAGS	= 
-CC      = gcc
+#CC      = gcc
 RM      = rm
 
 all:	$(BINS)
 
 mtrace6: $(OBJS) ${INCS} ${DEPS}
 	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS);
-	strip $@
+	$(STRIP) $@
 
 clean:
 	$(RM) -f $(OBJS) $(BINS)
