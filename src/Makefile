@@ -37,7 +37,7 @@ all:	$(BINS)
 
 ecmh:	$(OBJS) ${INCS} ${DEPS}
 	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
-	@strip $@
+	$(STRIP) $@
 
 clean:
 	$(RM) -f $(OBJS) $(BINS)
