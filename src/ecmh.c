@@ -2726,12 +2726,18 @@ int main(int argc, char *argv[])
 #endif
 	if (g_conf->upstream)
 	{
-		dolog(LOG_INFO, "Using %s as an upstream interface\n", g_conf->upstream);
+		dolog(LOG_INFO, "Using %s as upstream interface\n", g_conf->upstream);
+	} else {
+		dolog(LOG_ERR, "No upstream interface!\n");
+		return -1;
 	}
 
 	if (g_conf->downstream)
 	{
-		dolog(LOG_INFO, "Using %s as an downstream interface\n", g_conf->downstream);
+		dolog(LOG_INFO, "Using %s as downstream interface\n", g_conf->downstream);
+	} else {
+		dolog(LOG_ERR, "No downstream interface!\n");
+		return -1;
 	}
 
 #ifdef ECMH_SUPPORT_MLD2
