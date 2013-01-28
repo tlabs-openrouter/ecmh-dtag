@@ -1081,7 +1081,7 @@ void l4_ipv6_icmpv6_mld1_report(struct intnode *intn, const struct ip6_hdr *iph,
 	/* No source address, so use any */
 	memset(&any, 0, sizeof(any));
 	
-	if (!grpint_refresh(grpintn, &any, MLD2_MODE_IS_INCLUDE))
+	if (!grpint_refresh(grpintn, &iph->ip6_src, MLD2_MODE_IS_INCLUDE, &any))
 	{
 		mld_log(LOG_WARNING, "Couldn't create subscription to %s for %s/%u\n", &mld1->mca, intn);
 		return;
@@ -1144,7 +1144,7 @@ void l4_ipv6_icmpv6_mld1_reduction(struct intnode *intn, const struct ip6_hdr *i
 	/* No source address, so use any */
 	memset(&any, 0, sizeof(any));
 
-	if (!subscr_unsub(grpintn->subscriptions, &any))
+	if (!subscr_unsub(grpintn->subscriptions, &iph->ip6_src, &any))
 	{
 		mld_log(LOG_WARNING, "Couldn't unsubscribe from %s on interface %s/%u\n", &mld1->mca, intn);
 		return;
@@ -1191,8 +1191,9 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 	 */
 	int_set_mld_version(intn, 2);
 
-	dolog(LOG_DEBUG, "Received a ICMPv6 MLDv2 Report (%u) on %s (grec's: %u)\n",
-		(unsigned int)mld2r->type, intn->name, ngrec);
+	inet_ntop(AF_INET6, &iph->ip6_src, srct, sizeof(srct));
+	dolog(LOG_DEBUG, "Received a ICMPv6 MLDv2 Report (%u) from %s on %s (grec's: %u)\n",
+		(unsigned int)mld2r->type, srct, intn->name, ngrec);
 
 	if ((sizeof(*mld2r) + ngrec*sizeof(*grec)) > plen)
 	{
@@ -1257,11 +1258,11 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 		{
 			if (grpintn)
 			{
-				if (!grpint_refresh(grpintn, &any,
+				if (!grpint_refresh(grpintn, &iph->ip6_src,
 					grec->grec_type == MLD2_MODE_IS_EXCLUDE ||
 					grec->grec_type == MLD2_CHANGE_TO_EXCLUDE ||
 					grec->grec_type == MLD2_BLOCK_OLD_SOURCES ?
-					MLD2_MODE_IS_INCLUDE : MLD2_MODE_IS_EXCLUDE))
+					MLD2_MODE_IS_INCLUDE : MLD2_MODE_IS_EXCLUDE, &any))
 				{
 					mld_log(LOG_WARNING, "Couldn't refresh subscription to %s for %s/%u\n",
 						&grec->grec_mca, intn);
@@ -1283,11 +1284,11 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 				/* Skip if we didn't get a grpint */
 				if (grpintn)
 				{
-					if (!grpint_refresh(grpintn, src,
+					if (!grpint_refresh(grpintn, &iph->ip6_src,
 						grec->grec_type == MLD2_MODE_IS_EXCLUDE ||
 						grec->grec_type == MLD2_CHANGE_TO_EXCLUDE ||
 						grec->grec_type == MLD2_BLOCK_OLD_SOURCES ?
-						MLD2_MODE_IS_EXCLUDE : MLD2_MODE_IS_INCLUDE))
+						MLD2_MODE_IS_EXCLUDE : MLD2_MODE_IS_INCLUDE, src))
 					{
 						mld_log(LOG_ERR, "Couldn't subscribe sourced from %s on %s/%u\n", src, intn);
 					}

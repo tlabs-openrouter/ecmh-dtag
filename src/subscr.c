@@ -10,7 +10,7 @@
 #include "ecmh.h"
 
 /* Subscription Node */
-struct subscrnode *subscr_create(const struct in6_addr *ipv6, int mode)
+struct subscrnode *subscr_create(const struct in6_addr *from, int mode, const struct in6_addr *ipv6)
 {
 	struct subscrnode *subscrn = malloc(sizeof(*subscrn));
 
@@ -19,6 +19,7 @@ struct subscrnode *subscr_create(const struct in6_addr *ipv6, int mode)
 	/* Fill her in */
 	memset(subscrn, 0, sizeof(*subscrn));
 	memcpy(&subscrn->ipv6, ipv6, sizeof(*ipv6));
+	memcpy(&subscrn->from, from, sizeof(*from));
 	subscrn->mode = mode;
 	subscrn->refreshtime = time(NULL);
 
@@ -42,11 +43,14 @@ void subscr_destroy(struct subscrnode *subscrn)
 
 D(
 	{
+		char from[INET6_ADDRSTRLEN];
 		char addr[INET6_ADDRSTRLEN];
+		memset(from,0,sizeof(addr));
 		memset(addr,0,sizeof(addr));
+		inet_ntop(AF_INET6, &subscrn->from, from, sizeof(from));
 		inet_ntop(AF_INET6, &subscrn->ipv6, addr, sizeof(addr));
-		dolog(LOG_DEBUG, "Destroying subscription %s (%s)\n", addr,
-			subscrn->mode == MLD2_MODE_IS_INCLUDE ? "INCLUDE" : "EXCLUDE");
+		dolog(LOG_DEBUG, "Destroying subscription %s (%s) from %s\n", addr,
+			subscrn->mode == MLD2_MODE_IS_INCLUDE ? "INCLUDE" : "EXCLUDE", from);
 	}
 )
 
@@ -54,26 +58,26 @@ D(
 	free(subscrn);
 }
 
-struct subscrnode *subscr_find(const struct list *list, const struct in6_addr *ipv6)
+struct subscrnode *subscr_find(const struct list *list, const struct in6_addr *from, const struct in6_addr *ipv6)
 {
 	struct subscrnode	*subscrn;
 	struct listnode		*ln;
 
 	LIST_LOOP(list, subscrn, ln)
 	{
-		if (IN6_ARE_ADDR_EQUAL(ipv6, &subscrn->ipv6)) return subscrn;
+		if (IN6_ARE_ADDR_EQUAL(from, &subscrn->from) && IN6_ARE_ADDR_EQUAL(ipv6, &subscrn->ipv6)) return subscrn;
 	}
 	return NULL;
 }
 
-bool subscr_unsub(struct list *list, const struct in6_addr *ipv6)
+bool subscr_unsub(struct list *list, const struct in6_addr *from, const struct in6_addr *ipv6)
 {
 	struct subscrnode	*subscrn;
 	struct listnode		*ln;
 
 	LIST_LOOP(list, subscrn, ln)
 	{
-		if (IN6_ARE_ADDR_EQUAL(ipv6, &subscrn->ipv6))
+		if (IN6_ARE_ADDR_EQUAL(from, &subscrn->from) && IN6_ARE_ADDR_EQUAL(ipv6, &subscrn->ipv6))
 		{
 			/* Delete the entry from the list */
 			list_delete_node(list, ln);
