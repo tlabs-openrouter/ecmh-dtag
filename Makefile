@@ -48,17 +48,6 @@ endif
 MAKEFLAGS += --no-print-directory
 
 # Misc bins, making it easy to quiet them :)
-CC=gcc
-RM=@rm -f
-MV=@mv
-MAKE:=@${MAKE}
-CP=@echo [Copy]; cp
-RPMBUILD=@echo [RPMBUILD]; rpmbuild
-RPMBUILD_SILENCE=>/dev/null 2>/dev/null
-
-export CC
-export MAKE
-export RM
 
 # Configure a default RPMDIR
 ifeq ($(shell echo "${RPMDIR}/" | grep -c "/"),1)
