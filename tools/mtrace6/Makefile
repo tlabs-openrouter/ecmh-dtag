@@ -19,7 +19,7 @@ DEPS	= ../../Makefile ../Makefile Makefile
 OBJS	= mtrace6.o
 CFLAGS	+= -W -Wall -Wno-unused -D_GNU_SOURCE -D'ECMH_VERSION="$(ECMH_VERSION)"' $(ECMH_OPTIONS)
 LDFLAGS	= 
-#CC      = gcc
+STRIP	?= strip
 RM      = rm
 
 all:	$(BINS)

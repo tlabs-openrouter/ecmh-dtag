@@ -32,6 +32,7 @@ EXTRA   = -g
 CFLAGS	+= $(WARNS) $(EXTRA) -D_GNU_SOURCE -D'ECMH_VERSION="$(ECMH_VERSION)"' $(ECMH_OPTIONS)
 LDFLAGS	+= $(ECMH_LDFREEBSD)
 #CC	:= @echo "[Compiling] $$@"; $(CC)
+STRIP	?= strip
 
 all:	$(BINS)
 
