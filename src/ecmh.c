@@ -37,6 +37,7 @@ volatile int	g_needs_timeout = false;
 void update_interfaces(struct intnode *intn);
 void l2_ethtype(struct intnode *intn, const uint8_t *packet, const unsigned int len, const unsigned int ether_type);
 void l2_eth(struct intnode *intn, struct ether_header *eth, const unsigned int len);
+bool handle_upstream_subscription(struct in6_addr *mca, struct subscrnode *subscrn);
 
 /*
  * 6to4 relay address 192.88.99.1
@@ -1043,6 +1044,8 @@ void l4_ipv6_icmpv6_mld1_report(struct intnode *intn, const struct ip6_hdr *iph,
 	struct in6_addr		any;
 	bool			isnew;
 
+	bool change = false;
+
 #ifdef ECMH_SUPPORT_MLDV2
 	if (g_conf->mld2only)
 	{
@@ -1078,13 +1081,14 @@ void l4_ipv6_icmpv6_mld1_report(struct intnode *intn, const struct ip6_hdr *iph,
 		return;
 	}
 
+	struct subscrnode *subscr = NULL;
 	/* No source address, so use any */
-	memset(&any, 0, sizeof(any));
-	
-	if (!grpint_refresh(grpintn, &iph->ip6_src, MLD2_MODE_IS_INCLUDE, &any))
+	if (! (subscr = grpint_refresh(grpintn, &iph->ip6_src, MLD2_MODE_IS_INCLUDE, &any)))
 	{
 		mld_log(LOG_WARNING, "Couldn't create subscription to %s for %s/%u\n", &mld1->mca, intn);
 		return;
+	} else {
+		change |= handle_upstream_subscription(&mld1->mca, subscr);
 	}
 
 	if (isnew) mld_send_report_all(intn, &mld1->mca);
@@ -1166,6 +1170,17 @@ void l4_ipv6_icmpv6_mld1_reduction(struct intnode *intn, const struct ip6_hdr *i
 }
 
 #ifdef ECMH_SUPPORT_MLD2
+static int check_grec_type(int grec_type, int nsrcs) {
+	int res = grec_type == MLD2_MODE_IS_EXCLUDE ||
+            grec_type == MLD2_CHANGE_TO_EXCLUDE ||
+            grec_type == MLD2_BLOCK_OLD_SOURCES;
+	if (nsrcs) { 
+		return res ? MLD2_MODE_IS_EXCLUDE : MLD2_MODE_IS_INCLUDE;
+	} else {
+	return res ? MLD2_MODE_IS_INCLUDE : MLD2_MODE_IS_EXCLUDE;
+	}
+}
+
 void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph, const uint16_t len, struct mld2_report *mld2r, const uint16_t plen);
 void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph, const uint16_t len, struct mld2_report *mld2r, const uint16_t plen)
 {
@@ -1175,6 +1190,7 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 	struct mld2_grec	*grec = (struct mld2_grec *)(((char *)mld2r)+sizeof(*mld2r));
 	unsigned int ngrec	= ntohs(mld2r->ngrec), nsrcs = 0;
 	bool			isnew = false;
+	bool 			change = false;
 
 #ifdef ECMH_SUPPORT_MLDV2
 	if (g_conf->mld1only)
@@ -1258,15 +1274,14 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 		{
 			if (grpintn)
 			{
-				if (!grpint_refresh(grpintn, &iph->ip6_src,
-					grec->grec_type == MLD2_MODE_IS_EXCLUDE ||
-					grec->grec_type == MLD2_CHANGE_TO_EXCLUDE ||
-					grec->grec_type == MLD2_BLOCK_OLD_SOURCES ?
-					MLD2_MODE_IS_INCLUDE : MLD2_MODE_IS_EXCLUDE, &any))
+				struct subscrnode *subscr = NULL;
+				if (! (subscr = grpint_refresh(grpintn, &iph->ip6_src, check_grec_type(grec->grec_type, nsrcs), &any)))
 				{
 					mld_log(LOG_WARNING, "Couldn't refresh subscription to %s for %s/%u\n",
 						&grec->grec_mca, intn);
 					return;
+				} else {
+					change |= handle_upstream_subscription(&grec->grec_mca, subscr);
 				}
 			}
 		}
@@ -1284,14 +1299,14 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 				/* Skip if we didn't get a grpint */
 				if (grpintn)
 				{
-					if (!grpint_refresh(grpintn, &iph->ip6_src,
-						grec->grec_type == MLD2_MODE_IS_EXCLUDE ||
-						grec->grec_type == MLD2_CHANGE_TO_EXCLUDE ||
-						grec->grec_type == MLD2_BLOCK_OLD_SOURCES ?
-						MLD2_MODE_IS_EXCLUDE : MLD2_MODE_IS_INCLUDE, src))
+					struct subscrnode *subscr = NULL;
+					if (! (subscr = grpint_refresh(grpintn, &iph->ip6_src, check_grec_type(grec->grec_type, nsrcs), src)))
 					{
 						mld_log(LOG_ERR, "Couldn't subscribe sourced from %s on %s/%u\n", src, intn);
+					} else {
+						change |= handle_upstream_subscription(&grec->grec_mca, subscr);
 					}
+
 				}
 
 				/* Next src */
@@ -2518,6 +2533,12 @@ bool handleinterfaces(uint8_t *buffer)
 	return true;
 }
 
+bool handle_upstream_subscription(struct in6_addr *mca, struct subscrnode *subscrn) {
+	mdb_subscribe(g_conf->memb_db, mca, subscrn->mode, &subscrn->ipv6);
+	mdb_print(g_conf->memb_db);
+	return false;
+}
+
 /* Long options */
 static struct option const long_options[] = {
 	{"foreground",		no_argument,		NULL, 'f'},
@@ -2732,6 +2753,9 @@ int main(int argc, char *argv[])
 		dolog(LOG_ERR, "No upstream interface!\n");
 		return -1;
 	}
+
+	g_conf->memb_db = list_new();
+	g_conf->memb_db->del = (void(*)(void *))mrec_destroy;
 
 	if (g_conf->downstream)
 	{

@@ -83,6 +83,7 @@
 #include "groups.h"
 #include "grpint.h"
 #include "subscr.h"
+#include "mship_db.h"
 
 /* Our configuration structure */
 struct conf
@@ -128,8 +129,11 @@ struct conf
 	uint64_t		stat_icmp_received;		/* Number of ICMP's received */
 	uint64_t		stat_icmp_sent;			/* Number of ICMP's sent */
 	uint64_t		stat_hlim_exceeded;		/* Packets that where dropped due to hlim == 0 */
+
+	struct list     *memb_db;		/* upstream membership database (rfc4605) */
 };
 
 /* Global Stuff */
 extern struct conf *g_conf;
 
+void mld_handle_upstream_subscription(struct subscrnode *subscrn);

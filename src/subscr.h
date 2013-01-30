@@ -20,3 +20,4 @@ struct subscrnode *subscr_create(const struct in6_addr *from, int mode, const st
 void subscr_destroy(struct subscrnode *subscrn);
 struct subscrnode *subscr_find(const struct list *list, const struct in6_addr *from, const struct in6_addr *ipv6);
 bool subscr_unsub(struct list *list, const struct in6_addr *from, const struct in6_addr *ipv6);
+void subscr_print(const struct list *list);

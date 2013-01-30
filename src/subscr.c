@@ -88,3 +88,21 @@ bool subscr_unsub(struct list *list, const struct in6_addr *from, const struct i
 	}
 	return false;
 }
+
+void subscr_print(const struct list *list)
+{
+	struct subscrnode	*subscrn;
+	struct listnode		*ln;
+
+	LIST_LOOP(list, subscrn, ln)
+	{
+		char from[INET6_ADDRSTRLEN];
+		char addr[INET6_ADDRSTRLEN];
+		memset(from,0,sizeof(addr));
+		memset(addr,0,sizeof(addr));
+		inet_ntop(AF_INET6, &subscrn->from, from, sizeof(from));
+		inet_ntop(AF_INET6, &subscrn->ipv6, addr, sizeof(addr));
+		dolog(LOG_DEBUG, "FROM %s %s %s\n", from,
+			subscrn->mode == MLD2_MODE_IS_INCLUDE ? "INCLUDE" : "EXCLUDE", addr);
+	}
+}

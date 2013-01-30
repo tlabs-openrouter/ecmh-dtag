@@ -55,12 +55,19 @@ struct grpintnode *grpint_find(const struct list *list, const struct intnode *in
  *		  ff3x::/96  : The source IPv6 address that wants to (not) receive this S<->G channel
  * mode		= MLD2_MODE_IS_INCLUDE/MLD2_MODE_IS_EXCLUDE
  */
-bool grpint_refresh(struct grpintnode *grpintn, const struct in6_addr *from, int mode, const struct in6_addr *ipv6)
+struct subscrnode *grpint_refresh(struct grpintnode *grpintn, const struct in6_addr *from, int mode, const struct in6_addr *ipv6)
 {
 	struct subscrnode *subscrn;
+	bool isnew = false;
 
 	/* Find our beloved group */
 	subscrn = subscr_find(grpintn->subscriptions, from, ipv6);
+	if (!subscrn)
+	{
+		/* Create the subscr node */
+		subscrn = subscr_create(from, mode, ipv6);
+		isnew = true;
+	}
 
 	/* Exclude all ? -> Unsubscribe */
 	if (	mode == MLD2_MODE_IS_EXCLUDE &&
@@ -72,22 +79,17 @@ bool grpint_refresh(struct grpintnode *grpintn, const struct in6_addr *from, int
 		 * because of a timeout
 		 */
 		dolog(LOG_DEBUG, "Not refreshing subscription.\n");
-		return true;
+		subscrn->refreshtime = 0;
+		return subscrn;
 	}
 
-	if (!subscrn)
+	/* Add the group to the list */
+	if (subscrn)
 	{
-		/* Create the subscr node */
-		subscrn = subscr_create(from, mode, ipv6);
-
-		/* Add the group to the list */
-		if (subscrn)
-		{
-			listnode_add(grpintn->subscriptions, (void *)subscrn);
-		}
+		if (isnew) listnode_add(grpintn->subscriptions, (void *)subscrn);
+	} else {
+		return NULL;
 	}
-
-	if (!subscrn) return false;
 
 	/* Mode still the same? */
 	if (mode != subscrn->mode)
@@ -99,7 +101,10 @@ bool grpint_refresh(struct grpintnode *grpintn, const struct in6_addr *from, int
 	/* Refresh it */
 	subscrn->refreshtime = time(NULL);
 
+	dolog(LOG_DEBUG, "Downstream subscriptions changed:\n");
+	subscr_print(grpintn->subscriptions);
+
 	/* All Okay */
-	return true;
+	return subscrn;
 }
 
