@@ -51,7 +51,7 @@ D(
 )
 
 	/* Empty the subscriber list */
-	list_delete_all_node(groupn->interfaces);
+	list_delete(groupn->interfaces);
 
 	/* Free the node */
 	free(groupn);

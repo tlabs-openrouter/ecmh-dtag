@@ -42,6 +42,136 @@ static void listnode_free(struct listnode *node)
 	free(node);
 }
 
+
+/* checks if elem is part of list. uses list->cmp when defined, 
+ * ptr equality otherwise.
+ *
+ * returns ptr of element in list if cmp!=0 (or element==needle when cmp==NULL),
+ *         NULL otherwise
+ */
+void *list_hasmember(const struct list *list, const void* needle) {
+	struct listnode *ln;
+	void* element;
+
+	if (list->cmp) {
+		LIST_LOOP(list, element, ln) {
+			if (list->cmp(element, needle)) {
+				return element;
+			}
+		}
+	} else {
+		LIST_LOOP(list, element, ln) {
+			if (element == needle) {
+				return element;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+
+/* returns the intersection between a and b as a new list. */
+/* uses copy and cmp if defined, ptr addresses otherwise. */
+/* result will use a->del, a->cmp and a->copy. */
+struct list *list_intersect(const struct list *a, const struct list *b) {
+	struct list *result;
+	void *element;
+	struct listnode *ln;
+
+	result = list_new();
+	result->del = (void(*)(void *))a->del;
+	result->copy = (void*(*)(const void *))a->copy;
+	result->cmp = (int(*)(const void *, const void*))a->cmp;
+	
+	LIST_LOOP(a, element, ln) {
+		if (list_hasmember(b, element)) {
+			element = a->copy(element);
+			listnode_add(result, element);
+		}
+	}
+
+	LIST_LOOP(b, element, ln) {
+		if (list_hasmember(a, element) && ! list_hasmember(result, element)) {
+			element = a->copy(element);
+			listnode_add(result, element);
+		}
+	}
+
+	return result;
+}
+
+struct list *list_union(const struct list *a, const struct list *b) {
+	void *elem;
+	struct listnode *ln;
+
+	struct list *result = list_new();
+	result->del = a->del;
+	result->cmp = a->cmp;
+	result->copy = a->copy;
+
+	LIST_LOOP(a, elem, ln) {
+		if (a->copy) elem = a->copy(elem);
+		listnode_add(result, elem);
+	}
+
+	if (b) {
+		LIST_LOOP(b, elem, ln) {
+			if (!list_hasmember(result, elem)) {
+				if (a->copy) elem = a->copy(elem);
+				listnode_add(result, elem);
+			}
+		}
+	}
+
+	return result;
+}
+
+struct list * list_remove_all(struct list *a, const struct list *b) {
+	void *element;
+	struct listnode *ln;
+	
+	LIST_LOOP(b, element, ln) {
+		if ((element = list_hasmember(a, element))) {
+			listnode_delete(a, element);
+		}
+	}
+
+	return a;
+}
+
+struct list * list_add_all(struct list *a, const struct list *b) {
+	void *element;
+	struct listnode *ln;
+	
+	LIST_LOOP(b, element, ln) {
+		if (! (element = list_hasmember(a, element))) {
+			listnode_add(a, element);
+		}
+	}
+
+	return a;
+}
+
+struct list * list_difference(const struct list *a, const struct list *b) {
+	void *element;
+	struct listnode *ln;
+	
+	struct list *result = list_new();
+	result->del = a->del;
+	result->cmp = a->cmp;
+	result->copy = a->copy;
+
+	LIST_LOOP(a, element, ln) {
+		if (!list_hasmember(b, element)) {
+			element = a->copy(element);
+			listnode_add(result, element);
+		}
+	}
+
+	return result;
+}
+
 /* Add new data to the list. */
 void listnode_add(struct list *list, void *val)
 {

@@ -29,7 +29,7 @@ export ECMH_VERSION
 # Enable MLDv2 Support : -DECMH_SUPPORT_MLD2
 # GetIfAddr Support    : -DECMH_GETIFADDR
 # BPF Support (BSD)    : _DECMH_BPF
-ECMH_OPTIONS=-DDEBUG -DECMH_SUPPORT_MLD2 -DECMH_GETIFADDR
+ECMH_OPTIONS=-std=c99 -Wno-unused-parameter -Wno-unused-variable -Wno-padded -DDEBUG -DECMH_SUPPORT_MLD2 -DECMH_GETIFADDR -Dlinux -g -O0
 
 # Not Linux? -> Enable BPF Mode
 ifeq ($(shell uname | grep -c "Linux"),0)

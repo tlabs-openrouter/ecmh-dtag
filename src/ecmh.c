@@ -28,6 +28,7 @@
 ***************************************/
 
 #include "ecmh.h"
+#include "mcast_client.h"
 
 /* Configuration Variables */
 struct conf	*g_conf;
@@ -37,7 +38,18 @@ volatile int	g_needs_timeout = false;
 void update_interfaces(struct intnode *intn);
 void l2_ethtype(struct intnode *intn, const uint8_t *packet, const unsigned int len, const unsigned int ether_type);
 void l2_eth(struct intnode *intn, struct ether_header *eth, const unsigned int len);
-bool handle_upstream_subscription(struct in6_addr *mca, struct subscrnode *subscrn);
+bool handle_upstream_subscription(struct intnode *intn);
+void handle_downstream_subscription(struct intnode *intn, struct membership_record *mrec);
+int switch_to_include(struct groupnode *groupn, struct grpintnode *grpintn);
+int remove_grpintn(struct groupnode *groupn, struct grpintnode *grpintn);
+
+/* returns the current time in msecs. might be missing some higher bits. */
+/*time_t mnow() {
+	struct timeval  tv;
+	gettimeofday(&tv, NULL);
+
+	return (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000 ;
+}*/
 
 /*
  * 6to4 relay address 192.88.99.1
@@ -513,6 +525,21 @@ void mld_send_query(struct intnode *intn, const struct in6_addr *mca, const stru
 	intn->stat_icmp_sent++;
 }
 
+void mld_send_mquery(struct intnode *intn, const struct in6_addr *mca, const struct list *srcs, bool suppression);
+void mld_send_mquery(struct intnode *intn, const struct in6_addr *mca, const struct list *srcs, bool suppression) {
+	struct listnode *ln;
+	struct msrc *msrc;
+	struct in6_addr *src;
+
+	LIST_LOOP(srcs, msrc, ln) {
+		dolog(LOG_DEBUG, "Sending MLDv2 Query for MCA\n");
+		log_ip6addr(LOG_DEBUG, mca);
+		dolog(LOG_DEBUG, "Source\n");
+		log_ip6addr(LOG_DEBUG, &msrc->addr);
+		mld_send_query(intn, mca, &msrc->addr, suppression);
+	}
+}
+
 void mld1_send_report(struct intnode *intn, const struct in6_addr *mca);
 void mld1_send_report(struct intnode *intn, const struct in6_addr *mca)
 {
@@ -686,6 +713,7 @@ void mld2_send_report(struct intnode *intn, const struct in6_addr *mca)
 			if (grpintn->ifindex == intn->ifindex) continue;
 
 			/* Go through the subscriptions */
+#if 0
 			LIST_LOOP(grpintn->subscriptions, subscrn, sn)
 			{
 				/* Exclusion record? -> Skip it, thus excluding it */
@@ -821,6 +849,7 @@ void mld2_send_report(struct intnode *intn, const struct in6_addr *mca)
 				/* We added a any address, thus don't add anything else */
 				else any = true;
 			}
+#endif			
 		}
 	}
 
@@ -1083,12 +1112,12 @@ void l4_ipv6_icmpv6_mld1_report(struct intnode *intn, const struct ip6_hdr *iph,
 
 	struct subscrnode *subscr = NULL;
 	/* No source address, so use any */
-	if (! (subscr = grpint_refresh(grpintn, &iph->ip6_src, MLD2_MODE_IS_INCLUDE, &any)))
+	if (! grpint_refresh(grpintn, &any, MLD2_MODE_IS_INCLUDE))
 	{
 		mld_log(LOG_WARNING, "Couldn't create subscription to %s for %s/%u\n", &mld1->mca, intn);
 		return;
 	} else {
-		change |= handle_upstream_subscription(&mld1->mca, subscr);
+//		change |= handle_upstream_subscription(&mld1->mca, subscr);
 	}
 
 	if (isnew) mld_send_report_all(intn, &mld1->mca);
@@ -1148,6 +1177,7 @@ void l4_ipv6_icmpv6_mld1_reduction(struct intnode *intn, const struct ip6_hdr *i
 	/* No source address, so use any */
 	memset(&any, 0, sizeof(any));
 
+#if 0
 	if (!subscr_unsub(grpintn->subscriptions, &iph->ip6_src, &any))
 	{
 		mld_log(LOG_WARNING, "Couldn't unsubscribe from %s on interface %s/%u\n", &mld1->mca, intn);
@@ -1165,20 +1195,215 @@ void l4_ipv6_icmpv6_mld1_reduction(struct intnode *intn, const struct ip6_hdr *i
 		grpintn->subscriptions->count = -ECMH_ROBUSTNESS_FACTOR;
 #endif
 	}
+#endif
 
 	return;
 }
 
 #ifdef ECMH_SUPPORT_MLD2
-static int check_grec_type(int grec_type, int nsrcs) {
-	int res = grec_type == MLD2_MODE_IS_EXCLUDE ||
-            grec_type == MLD2_CHANGE_TO_EXCLUDE ||
-            grec_type == MLD2_BLOCK_OLD_SOURCES;
-	if (nsrcs) { 
-		return res ? MLD2_MODE_IS_EXCLUDE : MLD2_MODE_IS_INCLUDE;
-	} else {
-	return res ? MLD2_MODE_IS_INCLUDE : MLD2_MODE_IS_EXCLUDE;
+static int is_known_grec_type(int grec_type) {
+	return ( 
+		grec_type == MLD2_MODE_IS_INCLUDE ||
+		grec_type == MLD2_MODE_IS_EXCLUDE ||
+		grec_type == MLD2_CHANGE_TO_INCLUDE ||
+		grec_type == MLD2_CHANGE_TO_EXCLUDE ||
+		grec_type == MLD2_ALLOW_NEW_SOURCES ||
+		grec_type == MLD2_BLOCK_OLD_SOURCES);
+}
+
+static void set_source_timers(struct list *sources, const struct list *which_list, unsigned int timer_value) {
+	struct msrc *source;
+	struct listnode *ln;
+
+	LIST_LOOP(sources, source, ln) {
+		if (which_list && ! list_hasmember(which_list, source)) 
+			continue;
+		source->timer = timer_value;
 	}
+}
+
+int switch_to_include(struct groupnode *groupn, struct grpintnode *grpintn) {
+	dolog(LOG_DEBUG, "%s %u grpintn switching to INCLUDE mode.\n", __FILE__, __LINE__);
+
+
+	if (list_isempty(grpintn->includes)) {
+		return remove_grpintn(groupn, grpintn);
+	}
+
+	grpintn->filter_mode=MLD2_MODE_IS_INCLUDE;
+	return 0;
+}
+
+int remove_grpintn(struct groupnode *groupn, struct grpintnode *grpintn) {
+	listnode_delete(groupn->interfaces, grpintn);
+	if (list_isempty(groupn->interfaces)) {
+		dolog(LOG_DEBUG, "%s %u Deleting group.\n", __FILE__, __LINE__);
+		listnode_delete(g_conf->groups, groupn);
+		return 1;
+	}
+	return 0;
+}
+
+void handle_downstream_subscription(struct intnode *intn, struct membership_record *mrec) {
+	struct grpintnode *grpintn;
+	time_t now;
+	bool isnew = false;
+
+	grpintn = groupint_get(&mrec->mca, intn, &isnew);
+	if (!grpintn) {
+		goto out;
+	}
+
+	dolog(LOG_DEBUG, "handle_downstream_subscription() oldmode=%u newmode=%u isnew=%u\n", grpintn->filter_mode, mrec->filter_mode, isnew);
+
+	if (grpintn->filter_mode == MLD2_MODE_IS_INCLUDE) {
+		if (mrec->filter_mode == MLD2_MODE_IS_INCLUDE || mrec->filter_mode == MLD2_ALLOW_NEW_SOURCES || mrec->filter_mode == MLD2_CHANGE_TO_INCLUDE) {
+//			dolog(LOG_DEBUG, "Adding new sources to the includes list.\n");
+			struct list *tmp = list_union(grpintn->includes, mrec->source_list);
+			
+			/* (B)=MALI */
+			set_source_timers(tmp, mrec->source_list, time(NULL)+MALI);
+			
+			if (mrec->filter_mode == MLD2_CHANGE_TO_INCLUDE) {
+				/* Q(MA,A-B) */
+				struct list *AminusB = list_difference(grpintn->includes, mrec->source_list);
+				mld_send_mquery(intn, &mrec->mca, AminusB, false);
+				set_source_timers(tmp, AminusB, time(NULL)+LLQI);
+				list_delete(AminusB);
+			}
+			list_delete(grpintn->includes);
+			grpintn->includes = tmp;			
+
+		} else if (mrec->filter_mode == MLD2_MODE_IS_EXCLUDE || mrec->filter_mode == MLD2_CHANGE_TO_EXCLUDE) {
+			dolog(LOG_DEBUG, "Switching to EXCLUDE mode.\n");
+			struct list *AjoinB = list_intersect(grpintn->includes, mrec->source_list);
+			struct list *BminusA = list_difference(mrec->source_list, grpintn->includes);
+			struct list *AminusB = list_difference(grpintn->includes, mrec->source_list);
+
+			list_delete(grpintn->includes);
+			list_delete(grpintn->excludes);
+
+			/* Delete (A-B) */
+			grpintn->includes = list_difference(AjoinB, AminusB);
+			grpintn->excludes = list_difference(BminusA, AminusB);
+			
+			/* (B-A)=0 */
+			set_source_timers(grpintn->includes, BminusA, 0);
+
+			/* Filter Timer=MALI */
+			now = time(NULL);
+			grpintn->filter_timer = now+MALI;
+
+			if (mrec->filter_mode == MLD2_CHANGE_TO_EXCLUDE) {
+				/* Send Q(MA,A*B) */
+				mld_send_mquery(intn, &mrec->mca, AjoinB, false);
+				set_source_timers(grpintn->includes, AjoinB, now+LLQI);
+			}
+			
+			list_delete(AjoinB);
+			list_delete(BminusA);
+			list_delete(AminusB);
+			
+			grpintn->filter_mode = MLD2_MODE_IS_EXCLUDE;
+
+		} else if (mrec->filter_mode == MLD2_BLOCK_OLD_SOURCES) {
+			dolog(LOG_DEBUG, "INCLUDE (A) + BLOCK (B) -> INCLUDE (A) + Send Q(MA,A*B)\n");
+
+			/* Q(MA,A*B) */
+			struct list *AintersectB = list_intersect(grpintn->includes, mrec->source_list);
+			mld_send_mquery(intn, &mrec->mca, AintersectB, false);
+			set_source_timers(grpintn->includes, AintersectB, time(NULL)+LLQI);
+			list_delete(AintersectB);
+		}
+	} else if (grpintn->filter_mode == MLD2_MODE_IS_EXCLUDE) {
+		if (mrec->filter_mode == MLD2_MODE_IS_INCLUDE || mrec->filter_mode == MLD2_ALLOW_NEW_SOURCES || mrec->filter_mode == MLD2_CHANGE_TO_INCLUDE) {
+			struct list *XplusA = list_union(grpintn->includes, mrec->source_list);
+			struct list *YminusA = list_intersect(grpintn->excludes, mrec->source_list);
+
+			/* (A)=MALI */
+			set_source_timers(XplusA, NULL, time(NULL)+MALI);
+
+			if (mrec->filter_mode == MLD2_CHANGE_TO_INCLUDE) {
+				/* Q(MA,X-A) */
+				struct list *XminusA = list_difference(grpintn->includes, mrec->source_list);
+				mld_send_mquery(intn, &mrec->mca, XminusA, false);
+				set_source_timers(XplusA, XminusA, time(NULL)+LLQI);
+				list_delete(XminusA);
+				/* Q(MA) */
+				mld_send_query(intn, &mrec->mca, NULL, false);
+				grpintn->filter_timer = time(NULL)+LLQI;
+			}
+			list_delete(grpintn->includes);
+			list_delete(grpintn->excludes);
+			grpintn->includes = XplusA;
+			grpintn->excludes = YminusA;
+
+		} else if (mrec->filter_mode == MLD2_MODE_IS_EXCLUDE || mrec->filter_mode == MLD2_CHANGE_TO_EXCLUDE) {
+			dolog(LOG_DEBUG, "EXCLUDE && (MLD2_MODE_IS_EXCLUDE || MLD2_CHANGE_TO_EXCLUDE))\n");
+			struct list *AminusY = list_difference(mrec->source_list, grpintn->excludes);
+			struct list *YintersectA = list_intersect(grpintn->excludes, mrec->source_list);
+			struct list *AminXminY = list_difference(AminusY, grpintn->includes);
+
+			/* Delete (X-A) */
+			struct list *XminusA = list_difference(grpintn->includes, mrec->source_list);
+			list_remove_all(grpintn->includes, XminusA);
+			list_remove_all(grpintn->excludes, XminusA);
+
+			/* Delete (Y-A) */
+			struct list *YminusA = list_difference(grpintn->excludes, mrec->source_list);
+			list_remove_all(grpintn->includes, YminusA);
+			list_remove_all(grpintn->excludes, YminusA);
+
+			if (mrec->filter_mode == MLD2_MODE_IS_EXCLUDE) {
+				/* (A-X-Y)=MALI */
+				set_source_timers(grpintn->includes, AminXminY, time(NULL)+MALI);
+				set_source_timers(grpintn->excludes, AminXminY, time(NULL)+MALI);
+			} else if (mrec->filter_mode == MLD2_CHANGE_TO_EXCLUDE) {
+				/* (A-X-Y)=Filter Timer*/
+				set_source_timers(grpintn->includes, AminXminY, grpintn->filter_timer);
+				set_source_timers(grpintn->excludes, AminXminY, grpintn->filter_timer);
+				/* Q(MA,A-Y) */
+				mld_send_mquery(intn, &mrec->mca, AminusY, false);
+				set_source_timers(grpintn->includes, AminusY, time(NULL)+LLQI);
+				set_source_timers(grpintn->excludes, AminusY, time(NULL)+LLQI);
+			}
+			/* Filter Timer=MALI */
+			grpintn->filter_timer = time(NULL)+MALI;
+			
+			list_delete(YminusA);
+			list_delete(AminusY);
+			list_delete(YintersectA);
+			list_delete(XminusA);
+
+		} else if (mrec->filter_mode == MLD2_BLOCK_OLD_SOURCES) {
+			dolog(LOG_DEBUG, "EXCLUDE (X,Y) + BLOCK (A) -> EXCLUDE (X+(A-Y),Y)\n");
+			struct list *AminusY = list_difference(mrec->source_list, grpintn->excludes);
+			struct list *AminXminY = list_difference(AminusY, grpintn->includes);
+			list_add_all(grpintn->includes, AminusY);
+
+			/* (A-X-Y) = Filter Timer */
+			set_source_timers(grpintn->includes, AminXminY, grpintn->filter_timer);
+
+			/* Q(MA,A-Y) */
+			mld_send_mquery(intn, &mrec->mca, AminusY, false);
+			set_source_timers(grpintn->includes, AminusY, time(NULL)+LLQI);
+			set_source_timers(grpintn->excludes, AminusY, time(NULL)+LLQI);
+
+			list_delete(AminusY);
+			list_delete(AminXminY);
+		}
+	}
+
+/*	dolog(LOG_DEBUG, "New grpintstate: mode=%s timer=%u\n", grpintn->filter_mode==1?"INCLUDE":"EXCLUDE", grpintn->filter_timer);
+	dolog(LOG_DEBUG, "New includes:\n");
+	print_sources(grpintn->includes);
+	dolog(LOG_DEBUG, "New excludes:\n");
+	print_sources(grpintn->excludes);
+*/
+	return;
+
+out:
+		mrec_destroy(mrec);
 }
 
 void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph, const uint16_t len, struct mld2_report *mld2r, const uint16_t plen);
@@ -1189,8 +1414,8 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 	struct in6_addr		*src, any;
 	struct mld2_grec	*grec = (struct mld2_grec *)(((char *)mld2r)+sizeof(*mld2r));
 	unsigned int ngrec	= ntohs(mld2r->ngrec), nsrcs = 0;
-	bool			isnew = false;
-	bool 			change = false;
+	struct membership_record *mrec;
+	bool handle_upstream = false;
 
 #ifdef ECMH_SUPPORT_MLDV2
 	if (g_conf->mld1only)
@@ -1224,15 +1449,21 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 
 	while (ngrec > 0)
 	{
+		/* Ignore node and link local multicast addresses */
+		if (IN6_IS_ADDR_MC_NODELOCAL(&grec->grec_mca) ||
+			IN6_IS_ADDR_MC_LINKLOCAL(&grec->grec_mca))
+		{
+			dolog(LOG_ERR, "Ignoring report with node and link local multicast addresses\n");
+			goto out;
+		}
+
 		/* Check if we are still inside the packet */
 		if (((char *)grec) > (((char *)mld2r)+plen))
 		{
 			dolog(LOG_ERR, "Reached outside the packet (ngrec=%u) received on %s, length %u -> ignoring\n",
 				ngrec, intn->name, plen);
-			return;
+			goto out;
 		}
-
-		grpintn = NULL;
 
 		nsrcs = ntohs(grec->grec_nsrcs);
 		src = (struct in6_addr *)(((char *)grec) + sizeof(*grec));
@@ -1244,84 +1475,51 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 			mca, nsrcs, intn->name);
 #endif
 
-		if (	grec->grec_type != MLD2_MODE_IS_INCLUDE &&
-			grec->grec_type != MLD2_MODE_IS_EXCLUDE &&
-			grec->grec_type != MLD2_CHANGE_TO_INCLUDE &&
-			grec->grec_type != MLD2_CHANGE_TO_EXCLUDE &&
-			grec->grec_type != MLD2_ALLOW_NEW_SOURCES &&
-			grec->grec_type != MLD2_BLOCK_OLD_SOURCES)
+		if (!is_known_grec_type(grec->grec_type))
 		{
 			dolog(LOG_ERR, "Unknown Group Record Type %u/0x%x (ngrec=%u) on %s -> Ignoring Report\n",
 				grec->grec_type, grec->grec_type, ngrec, intn->name);
-			return;
+			goto out;
 		}
 
-		/* Ignore node and link local multicast addresses */
-		if (	!IN6_IS_ADDR_MC_NODELOCAL(&grec->grec_mca) &&
-			!IN6_IS_ADDR_MC_LINKLOCAL(&grec->grec_mca))
+		/* check packet length */
+		if ((nsrcs>0) && (((char *)src)-((char *)mld2r) + (nsrcs*sizeof(*src))) > plen)
 		{
-			inet_ntop(AF_INET6, &grec->grec_mca, mca, sizeof(mca));
-
-			/* Find the grpintnode or create it */
-			grpintn = groupint_get(&grec->grec_mca, intn, &isnew);
-			if (!grpintn)
-			{
-				mld_log(LOG_WARNING, "L4:IPv6:ICMPv6:MLD2_Report Couldn't find or create new group for %s on %s/%u\n", &grec->grec_mca, intn);
-			}
+			dolog(LOG_ERR, "Ignoring packet with invalid number (%u) of sources (would exceed packetlength)\n", nsrcs);
+			goto out;
 		}
 
-		if (nsrcs == 0)
+		handle_upstream = true;
+
+		/* create new membership record */
+		mrec = mrec_create(&grec->grec_mca, grec->grec_type);
+
+		/* add sources if available */
+		while (nsrcs > 0)
 		{
-			if (grpintn)
-			{
-				struct subscrnode *subscr = NULL;
-				if (! (subscr = grpint_refresh(grpintn, &iph->ip6_src, check_grec_type(grec->grec_type, nsrcs), &any)))
-				{
-					mld_log(LOG_WARNING, "Couldn't refresh subscription to %s for %s/%u\n",
-						&grec->grec_mca, intn);
-					return;
-				} else {
-					change |= handle_upstream_subscription(&grec->grec_mca, subscr);
-				}
-			}
+			mrec_add_source_addr(mrec, src);
+
+			/* Next src */
+			src = (struct in6_addr *)(((char *)src) + sizeof(*src));
+			nsrcs--;
 		}
-		else
-		{
-			if ((((char *)src)-((char *)mld2r) + (nsrcs*sizeof(*src))) > plen)
-			{
-				dolog(LOG_ERR, "Ignoring packet with invalid number (%u) of sources (would exceed packetlength)\n", nsrcs);
-				return;
-			}
+/*		dolog(LOG_WARNING, "new mrec: (type:%u)\n", grec->grec_type);
+		mrec_print(mrec);
+*/	
+		handle_downstream_subscription(intn, mrec);
 
-			/* Do all source addresses */
-			while (nsrcs > 0)
-			{
-				/* Skip if we didn't get a grpint */
-				if (grpintn)
-				{
-					struct subscrnode *subscr = NULL;
-					if (! (subscr = grpint_refresh(grpintn, &iph->ip6_src, check_grec_type(grec->grec_type, nsrcs), src)))
-					{
-						mld_log(LOG_ERR, "Couldn't subscribe sourced from %s on %s/%u\n", src, intn);
-					} else {
-						change |= handle_upstream_subscription(&grec->grec_mca, subscr);
-					}
-
-				}
-
-				/* Next src */
-				src = (struct in6_addr *)(((char *)src) + sizeof(*src));
-				nsrcs--;
-			}
-		}
-
-		if (isnew) mld_send_report_all(intn, &grec->grec_mca);
+		mrec_destroy(mrec);
 
 		/* Next grec, also skip the auxwords */
 		grec = (struct mld2_grec *)(((char *)src) + grec->grec_auxwords);
 		ngrec--;
 	}
+	
+	if (handle_upstream) handle_upstream_subscription(intn);
 
+	return;
+
+out:
 	return;
 }
 #endif /* ECMH_SUPPORT_MLD2 */
@@ -1421,6 +1619,9 @@ void l4_ipv6_multicast(struct intnode *intn, struct ip6_hdr *iph, const uint16_t
 	struct subscrnode	*subscrn;
 	struct listnode		*in, *in2;
 
+	struct msrc *src;
+	time_t now;
+
 	/* 
 	 * Don't route multicast packets that:
 	 * - src = multicast
@@ -1474,33 +1675,52 @@ D(
 		/* Don't send to the interface this packet originated from */
 		if (intn->ifindex == grpintn->ifindex) continue;
 
-		/* Check the subscriptions for this group */
-		LIST_LOOP(grpintn->subscriptions, subscrn, in2)
-		{
-			/* Unspecified or specific subscription to this address? */
-			if (	!IN6_ARE_ADDR_EQUAL(&subscrn->ipv6, &in6addr_any) &&
-				!IN6_ARE_ADDR_EQUAL(&subscrn->ipv6, &iph->ip6_src)) continue;
+		if (grpintn->filter_mode == MLD2_MODE_IS_INCLUDE) {
+			if (!(src = list_hasmember(grpintn->includes, &iph->ip6_src))) {
+				continue;
+			} else {
+				now = time(NULL);
+				if (src->timer <= now) {
+					dolog(LOG_DEBUG, "%s %u source timer <0 (%u<=%u). Removing source.\n", __FILE__, __LINE__, src->timer, now);
+					listnode_delete(grpintn->includes, src);
+					if (list_isempty(grpintn->includes)) {
+						dolog(LOG_DEBUG, "%s %u Last source of group->interface removed. Deleting group->interface.\n", __FILE__, __LINE__, src->timer, now);
+						int lastgroup = remove_grpintn(groupn, grpintn);
+						handle_upstream_subscription(int_find(grpintn->ifindex));
+						if (lastgroup) 
+							break;
+						else 
+							continue;
+					}
+				}
+			}
+		} else {
+			now = time(NULL);
+			if (grpintn->filter_timer <= now) {
+				if(switch_to_include(groupn, grpintn)) break;
+				continue;
+			}
 
-			/*
-			 * If it was explicitly requested to include
-			 * packets from this source,
-			 * don't even look further and do so.
-			 * This is the case when an MLDv1 listener
-			 * is on the link too for example.
-			 */
-			if (subscrn->mode != MLD2_MODE_IS_INCLUDE) continue;
-
-			/* Get the interface */
-			interface = int_find(grpintn->ifindex);
-			if (!interface) continue;
-
-			/* Send the packet to this interface */
-			sendpacket6(interface, iph, len);
-			
-			/* Packet is forwarded thus proceed to next interface */
-			break;
+			if ((!list_isempty(grpintn->excludes)) && (src = list_hasmember(grpintn->excludes, &iph->ip6_src))) {
+				if (src->timer >= now) {
+					dolog(LOG_DEBUG, "%s %u\n", __FILE__, __LINE__);
+				} else {
+					dolog(LOG_DEBUG, "%s %u\n", __FILE__, __LINE__);
+				}
+				continue;
+			}			
 		}
+//		dolog(LOG_DEBUG, "%s %u\n", __FILE__, __LINE__);
 
+		/* Get the interface */
+		interface = int_find(grpintn->ifindex);
+		if (!interface) continue;
+
+		/* Send the packet to this interface */
+		sendpacket6(interface, iph, len);
+
+		/* Packet is forwarded thus proceed to next interface */
+		break;
 	}
 }
 
@@ -2159,7 +2379,7 @@ void sigusr1(int i)
 	/* Dump out all the groups with their information */
 	fprintf(g_conf->stat_file, "*** Subscription Information Dump\n");
 	fprintf(g_conf->stat_file, "\n");
-
+#if 0
 	LIST_LOOP(g_conf->groups, groupn, ln)
 	{
 		inet_ntop(AF_INET6, &groupn->mca, addr, sizeof(addr));
@@ -2194,6 +2414,7 @@ void sigusr1(int i)
 
 	fprintf(g_conf->stat_file, "*** Subscription Information Dump (end - %u groups, %u subscriptions)\n", g_conf->groups->count, subscriptions);
 	fprintf(g_conf->stat_file, "\n");
+#endif
 
 	/* Dump all the interfaces */
 	fprintf(g_conf->stat_file, "*** Interface Dump\n");
@@ -2244,12 +2465,12 @@ void sigusr1(int i)
 		else
 		fprintf(g_conf->stat_file, "  MLD version            : v%u\n", intn->mld_version);
 
-		fprintf(g_conf->stat_file, "  Packets received       : %llu\n", intn->stat_packets_received);
-		fprintf(g_conf->stat_file, "  Packets sent           : %llu\n", intn->stat_packets_sent);
-		fprintf(g_conf->stat_file, "  Bytes received         : %llu\n", intn->stat_bytes_received);
-		fprintf(g_conf->stat_file, "  Bytes sent             : %llu\n", intn->stat_bytes_sent);
-		fprintf(g_conf->stat_file, "  ICMP's received        : %llu\n", intn->stat_icmp_received);
-		fprintf(g_conf->stat_file, "  ICMP's sent            : %llu\n", intn->stat_icmp_sent);
+		fprintf(g_conf->stat_file, "  Packets received       : %llu\n", (long long unsigned int)intn->stat_packets_received);
+		fprintf(g_conf->stat_file, "  Packets sent           : %llu\n", (long long unsigned int)intn->stat_packets_sent);
+		fprintf(g_conf->stat_file, "  Bytes received         : %llu\n", (long long unsigned int)intn->stat_bytes_received);
+		fprintf(g_conf->stat_file, "  Bytes sent             : %llu\n", (long long unsigned int)intn->stat_bytes_sent);
+		fprintf(g_conf->stat_file, "  ICMP's received        : %llu\n", (long long unsigned int)intn->stat_icmp_received);
+		fprintf(g_conf->stat_file, "  ICMP's sent            : %llu\n", (long long unsigned int)intn->stat_icmp_sent);
 		fprintf(g_conf->stat_file, "\n");
 	}
 
@@ -2277,13 +2498,13 @@ void sigusr1(int i)
 #endif
 	fprintf(g_conf->stat_file, "Subscription Timeout : %u\n", ECMH_SUBSCRIPTION_TIMEOUT * ECMH_ROBUSTNESS_FACTOR);
 	fprintf(g_conf->stat_file, "\n");
-	fprintf(g_conf->stat_file, "Packets Received     : %llu\n", g_conf->stat_packets_received);
-	fprintf(g_conf->stat_file, "Packets Sent         : %llu\n", g_conf->stat_packets_sent);
-	fprintf(g_conf->stat_file, "Bytes Received       : %llu\n", g_conf->stat_bytes_received);
-	fprintf(g_conf->stat_file, "Bytes Sent           : %llu\n", g_conf->stat_bytes_sent);
-	fprintf(g_conf->stat_file, "ICMP's received      : %llu\n", g_conf->stat_icmp_received);
-	fprintf(g_conf->stat_file, "ICMP's sent          : %llu\n", g_conf->stat_icmp_sent);
-	fprintf(g_conf->stat_file, "Hop Limit Exceeded   : %llu\n", g_conf->stat_hlim_exceeded);
+	fprintf(g_conf->stat_file, "Packets Received     : %llu\n", (long long unsigned int)g_conf->stat_packets_received);
+	fprintf(g_conf->stat_file, "Packets Sent         : %llu\n", (long long unsigned int)g_conf->stat_packets_sent);
+	fprintf(g_conf->stat_file, "Bytes Received       : %llu\n", (long long unsigned int)g_conf->stat_bytes_received);
+	fprintf(g_conf->stat_file, "Bytes Sent           : %llu\n", (long long unsigned int)g_conf->stat_bytes_sent);
+	fprintf(g_conf->stat_file, "ICMP's received      : %llu\n", (long long unsigned int)g_conf->stat_icmp_received);
+	fprintf(g_conf->stat_file, "ICMP's sent          : %llu\n", (long long unsigned int)g_conf->stat_icmp_sent);
+	fprintf(g_conf->stat_file, "Hop Limit Exceeded   : %llu\n", (long long unsigned int)g_conf->stat_hlim_exceeded);
 	fprintf(g_conf->stat_file, "\n");
 	fprintf(g_conf->stat_file, "*** Statistics Dump (end)\n");
 
@@ -2352,6 +2573,7 @@ void timeout(void)
 	/* Update the complete interfaces list */
 	update_interfaces(NULL);
 
+#if 0
 	/* Get the current time */
 	time_tee = time(NULL);
 
@@ -2401,7 +2623,7 @@ void timeout(void)
 		}
 	}
 	LIST_LOOP2_END
-
+#endif
 	/* Send out MLD queries */
 	send_mld_querys();
 
@@ -2411,7 +2633,8 @@ void timeout(void)
 bool handleinterfaces(uint8_t *buffer);
 bool handleinterfaces(uint8_t *buffer)
 {
-	int			i=0, len;
+	unsigned int		i=0;
+	int 				len;
 	struct intnode		*intn = NULL;
 
 #ifndef ECMH_BPF
@@ -2533,9 +2756,55 @@ bool handleinterfaces(uint8_t *buffer)
 	return true;
 }
 
-bool handle_upstream_subscription(struct in6_addr *mca, struct subscrnode *subscrn) {
-	mdb_subscribe(g_conf->memb_db, mca, subscrn->mode, &subscrn->ipv6);
-	mdb_print(g_conf->memb_db);
+bool handle_upstream_subscription(struct intnode *intn) {
+
+	struct groupnode	*groupn;
+	struct grpintnode	*grpintn;
+	struct msrc			*src;
+	struct list			*sources;
+	struct listnode		*ln, *ln2, *ln3;
+
+	int ifindex = g_conf->upstream_id;
+	int upstream_socket = 0;
+	int old_upstream_socket = 0;
+
+	dolog(LOG_DEBUG, "%s:%u handle_upstream_subscription() on %s (socket=%i)\n", __FILE__, __LINE__, intn->name, intn->upstream_socket);
+	
+	old_upstream_socket = intn->upstream_socket;
+	
+	LIST_LOOP(g_conf->groups, groupn, ln)
+	{
+		LIST_LOOP(groupn->interfaces, grpintn, ln2) {
+			struct in6_addr *mca = &groupn->mca;
+			if (grpintn->ifindex != intn->ifindex) continue;
+			sources = grpintn->filter_mode==MLD2_MODE_IS_INCLUDE ? grpintn->includes : grpintn->excludes;
+
+			if (!sources->count && grpintn->filter_mode==MLD2_MODE_IS_INCLUDE) continue;
+
+			dolog(LOG_DEBUG, "Setting filter on interface Nr. %i and multicast group: \n", ifindex);
+			log_ip6addr(LOG_DEBUG, mca);
+
+			if (! upstream_socket ) {
+				upstream_socket = mcast_socket_create6();
+				dolog(LOG_DEBUG, "Created new upstream socket %i for %s (old_upstream_socket=%i).\n", upstream_socket, intn->name, old_upstream_socket);
+				intn->upstream_socket = upstream_socket;
+			}
+
+			struct sockaddr_in6 group;
+			group.sin6_family = AF_INET6;
+			memcpy(&group.sin6_addr, mca, sizeof(*mca));
+
+			mcast_join_group(upstream_socket, ifindex, (struct sockaddr *)&group, sizeof(group));
+			mcast_set_filter(upstream_socket, ifindex, mca, grpintn->filter_mode, sources);
+		}
+	}
+
+	if (old_upstream_socket) {
+		dolog(LOG_DEBUG, "%s:%u closing upstream socket %i for %s.\n", __FILE__, __LINE__, old_upstream_socket, intn->name);
+		close(old_upstream_socket);
+	}
+
+	dolog(LOG_DEBUG, "%s:%u handle_upstream_subscription() exit.\n", __FILE__, __LINE__);
 	return false;
 }
 

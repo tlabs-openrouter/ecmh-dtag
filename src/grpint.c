@@ -16,11 +16,19 @@ struct grpintnode *grpint_create(const struct intnode *interface)
 	if (!grpintn) return NULL;
 
 	/* Fill her in */
+	grpintn->filter_mode = 1;
 	grpintn->ifindex = interface->ifindex;
 
 	/* Setup the list */
-	grpintn->subscriptions = list_new();
-	grpintn->subscriptions->del = (void(*)(void *))subscr_destroy;
+	grpintn->includes = list_new();
+	grpintn->includes->del = (void(*)(void *))msrc_free;
+	grpintn->includes->cmp = (int(*)(const void *, const void*)) msrc_cmp;
+	grpintn->includes->copy	= (void*(*)(const void *)) msrc_getcopy;
+	
+	grpintn->excludes = list_new();
+	grpintn->excludes->del = (void(*)(void *))msrc_free;
+	grpintn->excludes->cmp = (int(*)(const void *, const void*)) msrc_cmp;
+	grpintn->excludes->copy	= (void*(*)(const void *)) msrc_getcopy;
 
 	/* All okay */
 	return grpintn;
@@ -30,8 +38,8 @@ void grpint_destroy(struct grpintnode *grpintn)
 {
 	if (!grpintn) return;
 
-	/* Empty the subscriber list */
-	list_delete_all_node(grpintn->subscriptions);
+	list_delete(grpintn->includes);
+	list_delete(grpintn->excludes);
 
 	/* Free the node */
 	free(grpintn);
@@ -55,56 +63,8 @@ struct grpintnode *grpint_find(const struct list *list, const struct intnode *in
  *		  ff3x::/96  : The source IPv6 address that wants to (not) receive this S<->G channel
  * mode		= MLD2_MODE_IS_INCLUDE/MLD2_MODE_IS_EXCLUDE
  */
-struct subscrnode *grpint_refresh(struct grpintnode *grpintn, const struct in6_addr *from, int mode, const struct in6_addr *ipv6)
+struct subscrnode *grpint_refresh(struct grpintnode *grpintn, const struct in6_addr *ipv6, int mode)
 {
-	struct subscrnode *subscrn;
-	bool isnew = false;
-
-	/* Find our beloved group */
-	subscrn = subscr_find(grpintn->subscriptions, from, ipv6);
-	if (!subscrn)
-	{
-		/* Create the subscr node */
-		subscrn = subscr_create(from, mode, ipv6);
-		isnew = true;
-	}
-
-	/* Exclude all ? -> Unsubscribe */
-	if (	mode == MLD2_MODE_IS_EXCLUDE &&
-		IN6_IS_ADDR_UNSPECIFIED(ipv6))
-	{
-		/*
-		 * Don't refresh the subscription,
-		 * causing it to be removed later on
-		 * because of a timeout
-		 */
-		dolog(LOG_DEBUG, "Not refreshing subscription.\n");
-		subscrn->refreshtime = 0;
-		return subscrn;
-	}
-
-	/* Add the group to the list */
-	if (subscrn)
-	{
-		if (isnew) listnode_add(grpintn->subscriptions, (void *)subscrn);
-	} else {
-		return NULL;
-	}
-
-	/* Mode still the same? */
-	if (mode != subscrn->mode)
-	{
-		dolog(LOG_DEBUG, "grpint_refresh() - Mode changed from %u to %u\n", subscrn->mode, mode);
-		subscrn->mode = mode;
-	}
-
-	/* Refresh it */
-	subscrn->refreshtime = time(NULL);
-
-	dolog(LOG_DEBUG, "Downstream subscriptions changed:\n");
-	subscr_print(grpintn->subscriptions);
-
-	/* All Okay */
-	return subscrn;
+	return NULL;
 }
 

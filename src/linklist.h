@@ -20,6 +20,8 @@ struct list
 	struct listnode	*tail;
 	int		count;
 	void		(*del)(void *val);
+	void*		(*copy)(const void *val);
+	int			(*cmp)(const void *a, const void *b);
 };
 
 #define nextnode(X)	((X) = (X)->next)
@@ -38,6 +40,13 @@ void		list_delete_all_node (struct list *);
 void		list_delete_node (struct list *, struct listnode *);
 /* Move the node to the front - for int_find() - jeroen */
 void		list_movefront_node(struct list *, struct listnode *);
+
+void 		*list_hasmember(const struct list *haystack, const void* needle);
+struct list *list_intersect(const struct list *a, const struct list *b);
+struct list *list_union(const struct list *target, const struct list *source);
+struct list *list_difference(const struct list *a, const struct list *b);
+struct list *list_remove_all(struct list *a, const struct list *b);
+struct list *list_add_all(struct list *a, const struct list *b);
 
 /* List iteration macro. */
 #define LIST_LOOP(L,V,N) \

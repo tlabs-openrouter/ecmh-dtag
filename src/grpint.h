@@ -10,12 +10,16 @@
 /* The node used to hold the interfaces which a group joined */
 struct grpintnode
 {
-	unsigned int		ifindex;		/* The interface */
-	struct list		*subscriptions;		/* Subscriber list */
+	unsigned int ifindex;				/* The interface */
+	struct list	 *includes;				/* include list */
+	struct list	 *excludes;				/* exclude list */
+	struct list	 *requested;			/* requested list */
+	unsigned int filter_mode;			/* rfc3810 Router Filter Mode */
+	unsigned int filter_timer;			/* rfc3810 Filter Timer */
 };
 
 struct grpintnode *grpint_create(const struct intnode *interface);
 void grpint_destroy(struct grpintnode *grpintn);
 struct grpintnode *grpint_find(const struct list *list, const struct intnode *interface);
-struct subscrnode *grpint_refresh(struct grpintnode *grpintn, const struct in6_addr *from, int mode, const struct in6_addr *ipv6);
+struct subscrnode *grpint_refresh(struct grpintnode *grpintn, const struct in6_addr *ipv6, int mode);
 

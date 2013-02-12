@@ -47,6 +47,7 @@ struct intnode
 
 	bool		upstream;		/* This interface is an upstream */
 	bool		downstream;		/* This interface is a downstream */
+	int			upstream_socket;	/* socket holding upstream subscriptions */
 };
 
 /* Node functions */
