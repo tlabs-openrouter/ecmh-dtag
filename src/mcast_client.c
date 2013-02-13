@@ -87,7 +87,8 @@ int mcast_set_filter(int socket, int ifindex, struct in6_addr *mca, int filter_m
 	
 	printf("%s:%u mcast_set_filter() socket=%u ifindex=%u filter_mode=%s sources=%u\n", __FILE__, __LINE__, socket, ifindex, mld_grec_mode(filter_mode), src_list->count);
 	if (src_list->count == 0) {
-		printf("%s:%u empty source list.\n", __FILE__, __LINE__);
+//		printf("%s:%u empty source list.\n", __FILE__, __LINE__);
+		return 0;
 	}
 	
 	group.sin6_family=AF_INET6;
@@ -101,7 +102,7 @@ int mcast_set_filter(int socket, int ifindex, struct in6_addr *mca, int filter_m
 	memset(sources, '\0', sizeof(struct sockaddr_storage)*src_list->count);
 	int i = 0;
 	LIST_LOOP(src_list, src, ln) {
-		printf("%s:%u mcast_set_filter() adding source with timer=%i\n", __FILE__, __LINE__, (unsigned int)(src->timer-time(NULL)));
+//		printf("%s:%u mcast_set_filter() adding source with timer=%i\n", __FILE__, __LINE__, (unsigned int)(src->timer-time(NULL)));
 		struct sockaddr_in6 *source = (struct sockaddr_in6*) &sources[i];
 		source->sin6_family = AF_INET6;
 		memcpy(&source->sin6_addr, &src->addr, sizeof(source->sin6_addr));
