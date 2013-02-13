@@ -7,6 +7,7 @@
 *****************************************************/
 
 void dolog(int level, const char *fmt, ...);
+void log_ip6addr(int log_level, const struct in6_addr *addr);
 int huprunning(void);
 void savepid(void);
 void cleanpid(int i);

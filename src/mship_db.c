@@ -15,7 +15,7 @@ const char *mld_grec_mode(int mode) {
 int mdb_deepcopy(struct list *old, struct list **new) {
 	struct listnode *ln;
 	struct listnode *ln2;
-	struct membership_record *mrec;
+	struct mrec *mrec;
 	struct msrc *src;
 	struct list *target;
 
@@ -26,7 +26,7 @@ int mdb_deepcopy(struct list *old, struct list **new) {
 	target->copy = old->copy;
 
 	LIST_LOOP(old, mrec, ln) {
-		struct membership_record *mrec_copy = mrec_create(&mrec->mca, mrec->filter_mode);
+		struct mrec *mrec_copy = mrec_create(&mrec->mca, mrec->filter_mode);
 		LIST_LOOP(mrec->source_list, src, ln2) {
 			mrec_add_source(mrec_copy, src);
 		}
@@ -34,43 +34,6 @@ int mdb_deepcopy(struct list *old, struct list **new) {
 	}
 
 	return 0;
-}
-
-struct msrc* msrc_create(const struct in6_addr *addr, int timer_value) {
-	struct msrc *src = malloc(sizeof(*src));
-	if (src) {
-		memcpy(&src->addr, addr, sizeof(*addr));
-		src->timer = timer_value;
-	}
-
-	return src;
-}
-
-void msrc_free(struct msrc *src) {
-	free(src);
-}
-
-struct msrc *msrc_getcopy(const struct msrc *src) {
-	struct msrc *copy = malloc(sizeof(*copy));
-	if (copy) {
-		memcpy(copy, src, sizeof(*src));
-	}
-
-	return copy;
-}
-
-int msrc_cmp(const struct msrc *a, const struct msrc *b) {
-	return IN6_ARE_ADDR_EQUAL(&a->addr, &b->addr);
-}
-
-void print_sources(struct list *sources) {
-	struct listnode     *ln;
-	struct msrc *src;
-	dolog(LOG_DEBUG, "...{\n");
-	LIST_LOOP(sources, src, ln){
-		log_ip6addr(LOG_DEBUG, &src->addr);
-	}
-	dolog(LOG_DEBUG, "...}\n");
 }
 
 /*struct in6_addr *in6_addr_getcopy(const struct in6_addr *src) {
@@ -92,8 +55,8 @@ void log_ip6addr(int log_level, const struct in6_addr *addr) {
 	dolog(LOG_DEBUG, "%s %llu\n", addr1, (long unsigned int)addr1);
 }
 
-struct membership_record *mrec_create(const struct in6_addr *mca, int mode) {
-	struct membership_record *mrec = malloc(sizeof(*mrec));
+struct mrec *mrec_create(const struct in6_addr *mca, int mode) {
+	struct mrec *mrec = malloc(sizeof(*mrec));
 
 	if (mrec) {
 		memset(mrec, 0, sizeof(*mrec));
@@ -108,13 +71,13 @@ struct membership_record *mrec_create(const struct in6_addr *mca, int mode) {
 	return mrec;
 }
 
-void mrec_destroy(struct membership_record *mrec) {
+void mrec_destroy(struct mrec *mrec) {
 	dolog(LOG_DEBUG, "Destroying membership record.\n");
 	list_delete(mrec->source_list);
 	free (mrec);
 }
 
-void mrec_print(struct membership_record *mrec) {
+void mrec_print(struct mrec *mrec) {
 	char addr1[INET6_ADDRSTRLEN];
 	struct listnode *ln;
 	struct msrc *src;
@@ -132,7 +95,7 @@ void mrec_print(struct membership_record *mrec) {
 
 void mdb_print(struct list *memb_db) {
 	struct listnode *ln;
-	struct membership_record *mrec;
+	struct mrec *mrec;
 
 	dolog(LOG_DEBUG, "Membership database: {\n");
 	LIST_LOOP(memb_db, mrec, ln) {
@@ -141,9 +104,9 @@ void mdb_print(struct list *memb_db) {
 	dolog(LOG_DEBUG, "}\n");
 }
 
-struct membership_record *mrec_find(const struct list *memb_db, const struct in6_addr *mca, int mode) {
+struct mrec *mrec_find(const struct list *memb_db, const struct in6_addr *mca, int mode) {
 	struct listnode *ln;
-	struct membership_record *mrec;
+	struct mrec *mrec;
 
 	LIST_LOOP(memb_db, mrec, ln) {
 		if (IN6_ARE_ADDR_EQUAL(mca, &mrec->mca) && ((!mode) || mrec->filter_mode == mode)) {
@@ -154,7 +117,7 @@ struct membership_record *mrec_find(const struct list *memb_db, const struct in6
 	return NULL;
 }
 
-int mrec_add_source(struct membership_record *mrec, const struct msrc *src) {
+int mrec_add_source(struct mrec *mrec, const struct msrc *src) {
 	struct msrc *newsrc;
 
 	if (!mrec) return 0;
@@ -174,7 +137,7 @@ int mrec_add_source(struct membership_record *mrec, const struct msrc *src) {
 	}
 }
 
-int mrec_add_source_addr(struct membership_record *mrec, const struct in6_addr *addr) {
+int mrec_add_source_addr(struct mrec *mrec, const struct in6_addr *addr) {
 	struct msrc *src = msrc_create(addr, 0);
 	if (!mrec_add_source(mrec, src)) {
 		msrc_free(src);
@@ -203,7 +166,7 @@ int mrec_add_source_addr(struct membership_record *mrec, const struct in6_addr *
 }*/
 
 void mdb_subscribe(struct list *memb_db, struct in6_addr *mca, int mode, struct list *sources) {
-	struct membership_record *mrec;
+	struct mrec *mrec;
 
 #ifdef DEBUG
 	char mca_str[INET6_ADDRSTRLEN];

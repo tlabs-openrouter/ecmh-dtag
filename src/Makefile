@@ -22,10 +22,10 @@
 
 # Below here nothing should have to be changed
 BINS	= ecmh
-SRCS	= ecmh.c linklist.c common.c interfaces.c groups.c grpint.c subscr.c mship_db.c mcast_client.c
-INCS	= ecmh.h linklist.h common.h interfaces.h groups.h grpint.h subscr.h mld.h mship_db.h mcast_client.h
+SRCS	= ecmh.c linklist.c common.c interfaces.c groups.c grpint.c subscr.c mrec.c msrc.c mcast_client.c mld2_logic.c
+INCS	= ecmh.h linklist.h common.h interfaces.h groups.h grpint.h subscr.h mld.h mrec.h msrc.h mcast_client.h mld2.h mld2_logic.h
 DEPS	= ../Makefile Makefile
-OBJS	= ecmh.o linklist.o common.o interfaces.o groups.o grpint.o subscr.o mship_db.o mcast_client.o
+OBJS	= ecmh.o linklist.o common.o interfaces.o groups.o grpint.o subscr.o mrec.o msrc.o mcast_client.o mld2_logic.o
 WARNS	= -W -Wall -pedantic -Wshadow -Wpointer-arith -Wcast-align -Wwrite-strings -Waggregate-return -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls -Wnested-externs -Winline -Wbad-function-cast -fshort-enums -fstrict-aliasing -fno-common -Wpacked -Wpadded
 EXTRA   = -g
 #EXTRA	= -O3

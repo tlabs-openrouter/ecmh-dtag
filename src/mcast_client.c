@@ -11,7 +11,8 @@
 
 #include "linklist.h"
 #include "mcast_client.h"
-#include "mship_db.h"
+#include "mrec.h"
+#include "msrc.h"
 
 int mcast_socket_create6() {
 	int fd = socket(AF_INET6, SOCK_DGRAM, 0);
@@ -44,9 +45,9 @@ int mcast_set_filter(int socket, int ifindex, struct in6_addr *mca, int filter_m
 	struct sockaddr_in6 group;
 	struct sockaddr_storage *sources;
 	
-	printf("%s:%u mcast_set_filter() socket=%u ifindex=%u filter_mode=%u sources=%u\n", __FILE__, __LINE__, socket, ifindex, filter_mode, src_list->count);
+	printf("%s:%u mcast_set_filter() socket=%u ifindex=%u filter_mode=%s sources=%u\n", __FILE__, __LINE__, socket, ifindex, mld_grec_mode(filter_mode), src_list->count);
 	if (src_list->count == 0) {
-		return 0;
+		printf("%s:%u empty source list.\n", __FILE__, __LINE__);
 	}
 	
 	group.sin6_family=AF_INET6;

@@ -64,26 +64,6 @@
 #define D(x) {}
 #endif
 
-/* The timeout for queries */
-/* as per RFC3810 MLDv2 "9.2.  Query Interval" */
-#define ECMH_SUBSCRIPTION_TIMEOUT	125
-
-/* Robustness Factor, per RFC3810 MLDv2 "9.1.  Robustness Variable" */
-#define ECMH_ROBUSTNESS_FACTOR		2
-
-#define QUERY_INTERVAL 10
-/* Multicast Address Listening Interval, 
- * per RFC3810 MLDv2 "9.1 Multicast Address Listening Interval 
- */
-#define MALI (ECMH_SUBSCRIPTION_TIMEOUT*ECMH_ROBUSTNESS_FACTOR+QUERY_INTERVAL)
-
-/* Last Listener Query Interval
- * per RFC3810 MLDv2 
- * (Note: per RFC, this should be one second. But we're
- * using 1-second-resolution time (the epoch), so to be safe, use two seconds.
- */
-#define LLQI 2
-
 #include "linklist.h"
 #include "common.h"
 
@@ -96,7 +76,11 @@
 #include "groups.h"
 #include "grpint.h"
 #include "subscr.h"
-#include "mship_db.h"
+
+#include "mld2.h"
+#include "mld2_logic.h"
+#include "mrec.h"
+#include "msrc.h"
 
 /* Our configuration structure */
 struct conf
@@ -149,4 +133,5 @@ struct conf
 /* Global Stuff */
 extern struct conf *g_conf;
 
-void mld_handle_upstream_subscription(struct subscrnode *subscrn);
+void mld_send_query(struct intnode *intn, const struct in6_addr *mca, const struct in6_addr *src, bool suppression);
+void mld_send_mquery(struct intnode *intn, const struct in6_addr *mca, const struct list *srcs, bool suppression);

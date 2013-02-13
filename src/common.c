@@ -29,6 +29,12 @@ void dolog(int level, const char *fmt, ...)
 	va_end(ap);
 }
 
+void log_ip6addr(int log_level, const struct in6_addr *addr) {
+	char addr1[INET6_ADDRSTRLEN];
+	inet_ntop(AF_INET6, addr, addr1, sizeof(addr1));
+	dolog(LOG_DEBUG, "%s %llu\n", addr1, (long long unsigned int)addr1);
+}
+
 int huprunning()
 {
 	int pid;
