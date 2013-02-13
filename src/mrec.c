@@ -39,7 +39,9 @@ struct mrec *mrec_create(const struct in6_addr *mca, int mode) {
 }
 
 void mrec_destroy(struct mrec *mrec) {
+#ifdef DEBUG
 	dolog(LOG_DEBUG, "Destroying membership record.\n");
+#endif
 	list_delete(mrec->source_list);
 	free (mrec);
 }
@@ -88,7 +90,9 @@ int mrec_add_source(struct mrec *mrec, const struct msrc *src) {
 		listnode_add(mrec->source_list, (void*)newsrc);
 		return 1;
 	} else {
+#ifdef DEBUG
 		dolog(LOG_WARNING, "Cannot allocate IPv6 address.\n");
+#endif
 		return 0;
 	}
 }

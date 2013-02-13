@@ -85,7 +85,7 @@ int mcast_set_filter(int socket, int ifindex, struct in6_addr *mca, int filter_m
 	struct sockaddr_in6 group;
 	struct sockaddr_storage *sources;
 	
-	printf("%s:%u mcast_set_filter() socket=%u ifindex=%u filter_mode=%s sources=%u\n", __FILE__, __LINE__, socket, ifindex, mld_grec_mode(filter_mode), src_list->count);
+//	printf("%s:%u mcast_set_filter() socket=%u ifindex=%u filter_mode=%s sources=%u\n", __FILE__, __LINE__, socket, ifindex, mld_grec_mode(filter_mode), src_list->count);
 	if (src_list->count == 0) {
 //		printf("%s:%u empty source list.\n", __FILE__, __LINE__);
 		return 0;

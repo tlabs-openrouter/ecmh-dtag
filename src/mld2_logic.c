@@ -16,7 +16,9 @@ static void set_source_timers(struct list *sources, const struct list *which_lis
 int remove_grpintn(struct groupnode *groupn, struct grpintnode *grpintn) {
 	listnode_delete(groupn->interfaces, grpintn);
 	if (list_isempty(groupn->interfaces)) {
+#ifdef DEBUG
 		dolog(LOG_DEBUG, "%s %u Deleting group.\n", __FILE__, __LINE__);
+#endif
 		listnode_delete(g_conf->groups, groupn);
 		return 1;
 	}
@@ -34,7 +36,9 @@ void handle_downstream_subscription(struct intnode *intn, struct mrec *mrec) {
 		goto out;
 	}
 
+#ifdef DEBUG
 	dolog(LOG_DEBUG, "handle_downstream_subscription() oldmode=%s newmode=%s isnew=%u\n", mld_grec_mode(grpintn->filter_mode), mld_grec_mode(mrec->filter_mode), isnew);
+#endif
 
 	if (grpintn->filter_mode == MLD2_MODE_IS_INCLUDE) {
 		if (mrec->filter_mode == MLD2_MODE_IS_INCLUDE || mrec->filter_mode == MLD2_ALLOW_NEW_SOURCES || mrec->filter_mode == MLD2_CHANGE_TO_INCLUDE) {
@@ -55,7 +59,9 @@ void handle_downstream_subscription(struct intnode *intn, struct mrec *mrec) {
 			grpintn->includes = tmp;			
 
 		} else if (mrec->filter_mode == MLD2_MODE_IS_EXCLUDE || mrec->filter_mode == MLD2_CHANGE_TO_EXCLUDE) {
+#ifdef DEBUG
 			dolog(LOG_DEBUG, "Switching to EXCLUDE mode.\n");
+#endif
 			struct list *AjoinB = list_intersect(grpintn->includes, mrec->source_list);
 			struct list *BminusA = list_difference(mrec->source_list, grpintn->includes);
 			struct list *AminusB = list_difference(grpintn->includes, mrec->source_list);
@@ -87,7 +93,9 @@ void handle_downstream_subscription(struct intnode *intn, struct mrec *mrec) {
 			grpintn->filter_mode = MLD2_MODE_IS_EXCLUDE;
 
 		} else if (mrec->filter_mode == MLD2_BLOCK_OLD_SOURCES) {
+#ifdef DEBUG
 			dolog(LOG_DEBUG, "INCLUDE (A) + BLOCK (B) -> INCLUDE (A) + Send Q(MA,A*B)\n");
+#endif
 
 			/* Q(MA,A*B) */
 			struct list *AintersectB = list_intersect(grpintn->includes, mrec->source_list);
@@ -97,7 +105,6 @@ void handle_downstream_subscription(struct intnode *intn, struct mrec *mrec) {
 		}
 	} else if (grpintn->filter_mode == MLD2_MODE_IS_EXCLUDE) {
 		if (mrec->filter_mode == MLD2_MODE_IS_INCLUDE || mrec->filter_mode == MLD2_ALLOW_NEW_SOURCES || mrec->filter_mode == MLD2_CHANGE_TO_INCLUDE) {
-			dolog(LOG_DEBUG, "...\n");
 			struct list *XplusA = list_union(grpintn->includes, mrec->source_list);
 			struct list *YminusA = list_intersect(grpintn->excludes, mrec->source_list);
 
@@ -120,7 +127,9 @@ void handle_downstream_subscription(struct intnode *intn, struct mrec *mrec) {
 			grpintn->excludes = YminusA;
 
 		} else if (mrec->filter_mode == MLD2_MODE_IS_EXCLUDE || mrec->filter_mode == MLD2_CHANGE_TO_EXCLUDE) {
+#ifdef DEBUG
 			dolog(LOG_DEBUG, "EXCLUDE && (MLD2_MODE_IS_EXCLUDE || MLD2_CHANGE_TO_EXCLUDE))\n");
+#endif
 			struct list *AminusY = list_difference(mrec->source_list, grpintn->excludes);
 			struct list *YintersectA = list_intersect(grpintn->excludes, mrec->source_list);
 			struct list *AminXminY = list_difference(AminusY, grpintn->includes);
@@ -157,7 +166,9 @@ void handle_downstream_subscription(struct intnode *intn, struct mrec *mrec) {
 			list_delete(XminusA);
 
 		} else if (mrec->filter_mode == MLD2_BLOCK_OLD_SOURCES) {
+#ifdef DEBUG
 			dolog(LOG_DEBUG, "EXCLUDE (X,Y) + BLOCK (A) -> EXCLUDE (X+(A-Y),Y)\n");
+#endif
 			struct list *AminusY = list_difference(mrec->source_list, grpintn->excludes);
 			struct list *AminXminY = list_difference(AminusY, grpintn->includes);
 			list_add_all(grpintn->includes, AminusY);
@@ -175,11 +186,13 @@ void handle_downstream_subscription(struct intnode *intn, struct mrec *mrec) {
 		}
 	}
 
+#ifdef DEBUG
 	dolog(LOG_DEBUG, "New grpintstate: mode=%s timer=%u\n", grpintn->filter_mode==1?"INCLUDE":"EXCLUDE", grpintn->filter_timer);
 	dolog(LOG_DEBUG, "New includes:\n");
 	print_sources(grpintn->includes);
 	dolog(LOG_DEBUG, "New excludes:\n");
 	print_sources(grpintn->excludes);
+#endif
 
 	return;
 
@@ -239,17 +252,24 @@ bool handle_upstream_subscription(struct intnode *intn) {
 	}
 
 	if (old_upstream_socket) {
+#ifdef DEBUG
 		dolog(LOG_DEBUG, "%s:%u closing upstream socket %i for %s.\n", __FILE__, __LINE__, old_upstream_socket, intn->name);
+#endif
 		close(old_upstream_socket);
 	}
 
+#ifdef DEBUG
 	dolog(LOG_DEBUG, "%s:%u handle_upstream_subscription() exit.\n", __FILE__, __LINE__);
+#endif
+
 	return false;
 }
 
 
 int mld2_switch_to_include(struct groupnode *groupn, struct grpintnode *grpintn) {
+#ifdef DEBUG
 	dolog(LOG_DEBUG, "%s %u grpintn switching to INCLUDE mode.\n", __FILE__, __LINE__);
+#endif
 	
 	grpintn->filter_mode=MLD2_MODE_IS_INCLUDE;
 	handle_upstream_subscription(int_find(grpintn->ifindex));
