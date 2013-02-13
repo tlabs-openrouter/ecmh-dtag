@@ -14,6 +14,46 @@
 #include "mrec.h"
 #include "msrc.h"
 
+/* (taken from glibc 2.17, slightly modified */
+static int _setsourcefilter (int s, uint32_t interface, const struct sockaddr *group,
+		socklen_t grouplen, uint32_t fmode, uint32_t numsrc,
+		const struct sockaddr_storage *slist)
+{
+	/* We have to create an struct ip_msfilter object which we can pass
+	   to the kernel.  */
+	size_t needed = GROUP_FILTER_SIZE (numsrc);
+
+	struct group_filter *gf;
+	gf = (struct group_filter *) malloc (needed);
+	if (gf == NULL)
+		return -1;
+
+	gf->gf_interface = interface;
+	memcpy (&gf->gf_group, group, grouplen);
+	gf->gf_fmode = fmode;
+	gf->gf_numsrc = numsrc;
+	memcpy (gf->gf_slist, slist, numsrc * sizeof (struct sockaddr_storage));
+
+	int sol;
+	switch (group->sa_family) {
+		case AF_INET:
+			sol = SOL_IP;
+			break;
+		case AF_INET6:
+			sol = SOL_IPV6;
+			break;
+		default: return -1;
+	}
+
+	int result = setsockopt (s, sol, MCAST_MSFILTER, gf, needed);
+
+	int save_errno = errno;
+	free (gf);
+	errno = save_errno;
+
+	return result;
+}
+
 int mcast_socket_create6() {
 	int fd = socket(AF_INET6, SOCK_DGRAM, 0);
 	if (fd == -1) {
@@ -68,7 +108,7 @@ int mcast_set_filter(int socket, int ifindex, struct in6_addr *mca, int filter_m
 		i++;
 	}
 	
-	int res = setsourcefilter(socket, ifindex, 
+	int res = _setsourcefilter(socket, ifindex, 
 			(struct sockaddr*) &group, sizeof(group), 
 			filter_mode, src_list->count, sources);
 
