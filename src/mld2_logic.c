@@ -2,6 +2,50 @@
 
 #include "mcast_client.h"
 
+int expire_source(struct groupnode *groupn, struct grpintnode *grpintn, struct msrc *src, time_t now) {
+	if (src->timer <= now) {
+		dolog(LOG_DEBUG, "%s %u source timer <0 (%u<=%u). Removing source.\n", __FILE__, __LINE__, src->timer, now);
+		listnode_delete(grpintn->includes, src);
+		if (list_isempty(grpintn->includes)) {
+			dolog(LOG_DEBUG, "%s %u Last source of group->interface removed. Deleting group->interface.\n", __FILE__, __LINE__, src->timer, now);
+			int lastgroup = remove_grpintn(groupn, grpintn);
+			handle_upstream_subscription(int_find(grpintn->ifindex));
+			return lastgroup+1;
+		}
+	}
+
+	return 0;
+}
+
+void expire_sources() {
+	struct intnode		*interface;
+	struct groupnode	*groupn;
+	struct grpintnode	*grpintn;
+	struct msrc 		*source;
+	struct listnode		*in, *in2, *in3;
+
+	int removed;
+
+	time_t now = time(NULL);
+
+	LIST_LOOP(g_conf->groups, groupn, in) {
+		removed = 0;
+		LIST_LOOP(groupn->interfaces, grpintn, in2)	{
+			if (grpintn->filter_mode == MLD2_MODE_IS_INCLUDE) {
+				LIST_LOOP(grpintn->includes, source, in3) {
+					removed = expire_source(groupn, grpintn, source, now);
+					if (removed) break;
+				}
+				if (removed==2) break;
+			} else {
+				if (grpintn->filter_timer <= now) {
+					if(mld2_switch_to_include(groupn, grpintn)) break;
+				}
+			}
+		}
+	}
+}
+
 static void set_source_timers(struct list *sources, const struct list *which_list, unsigned int timer_value) {
 	struct msrc *source;
 	struct listnode *ln;

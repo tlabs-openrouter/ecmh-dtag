@@ -33,6 +33,7 @@
 /* Configuration Variables */
 struct conf	*g_conf;
 volatile int	g_needs_timeout = false;
+time_t ecmh_timeout_offset;
 
 /* Prototypes, to forward some functions */
 void update_interfaces(struct intnode *intn);
@@ -1471,19 +1472,11 @@ D(
 				continue;
 			} else {
 				now = time(NULL);
-				if (src->timer <= now) {
-					dolog(LOG_DEBUG, "%s %u source timer <0 (%u<=%u). Removing source.\n", __FILE__, __LINE__, src->timer, now);
-					listnode_delete(grpintn->includes, src);
-					if (list_isempty(grpintn->includes)) {
-						dolog(LOG_DEBUG, "%s %u Last source of group->interface removed. Deleting group->interface.\n", __FILE__, __LINE__, src->timer, now);
-						int lastgroup = remove_grpintn(groupn, grpintn);
-						handle_upstream_subscription(int_find(grpintn->ifindex));
-						if (lastgroup) 
-							break;
-						else 
-							continue;
-					}
-				}
+				int lastgroup = expire_source(groupn, grpintn, src, now);
+				if (lastgroup)
+					break;
+				else
+					continue;
 			}
 		} else {
 			now = time(NULL);
@@ -2317,7 +2310,7 @@ void send_mld_querys(void)
 	struct in6_addr		any;
 	unsigned int		i;
 
-	dolog(LOG_DEBUG, "Sending MLD Queries\n");
+	dolog(LOG_DEBUG, "Sending MLD Queries...\n");
 
 	/* We want to know about all the groups */
 	memset(&any,0,sizeof(any));
@@ -2331,7 +2324,7 @@ void send_mld_querys(void)
 
 		mld_send_query(intn, &any, NULL, false);
 	}
-	dolog(LOG_DEBUG, "Sending MLD Queries - done\n");
+	dolog(LOG_DEBUG, "Sending MLD Queries - done.\n");
 }
 
 void timeout_signal(int i);
@@ -2351,74 +2344,19 @@ void timeout_signal(int i)
 void timeout(void);
 void timeout(void)
 {
-	struct groupnode	*groupn;
-	struct listnode		*ln, *ln2;
-	struct grpintnode	*grpintn;
-	struct listnode		*gn, *gn2;
-	struct subscrnode	*subscrn;
-	struct listnode		*ssn, *ssn2;
-	time_t			time_tee;
+	time_t now;
 
-	dolog(LOG_DEBUG, "Timeout\n");
+	now = time(NULL);
 
 	/* Update the complete interfaces list */
 	update_interfaces(NULL);
 
-#if 0
-	/* Get the current time */
-	time_tee = time(NULL);
-
-	/* Timeout all the groups that didn't refresh yet */
-	LIST_LOOP2(g_conf->groups, groupn, ln, ln2)
-	{
-		printf("Groups\n");
-		LIST_LOOP2(groupn->interfaces, grpintn, gn, gn2)
-		{
-			printf("Group Interfaces\n");
-			LIST_LOOP2(grpintn->subscriptions, subscrn, ssn, ssn2)
-			{
-				/* Calculate the difference */
-				int i = time_tee - subscrn->refreshtime;
-				if (i < 0) i = -i;
-
-				/* Dead too long? */
-				if (i > (ECMH_SUBSCRIPTION_TIMEOUT * ECMH_ROBUSTNESS_FACTOR))
-				{
-					/* Dead too long -> delete it */
-					list_delete_node(grpintn->subscriptions, ssn);
-					/* Destroy the subscription itself */
-					subscr_destroy(subscrn);
-				}
-			}
-			LIST_LOOP2_END
-#ifndef ECMH_SUPPORT_MLD2
-			if (grpintn->subscriptions->count == 0)
-#else
-			if (grpintn->subscriptions->count <= (-ECMH_ROBUSTNESS_FACTOR))
-#endif
-			{
-				/* Delete from the list */
-				list_delete_node(groupn->interfaces, gn);
-				/* Destroy the grpint */
-				grpint_destroy(grpintn);
-			}
-		}
-		LIST_LOOP2_END
-
-		if (groupn->interfaces->count == 0)
-		{
-			/* Delete from the list */
-			list_delete_node(g_conf->groups, ln);
-			/* Destroy the group */
-			group_destroy(groupn);
-		}
-	}
-	LIST_LOOP2_END
-#endif
 	/* Send out MLD queries */
-	send_mld_querys();
+	if ((now + ecmh_timeout_offset) % ECMH_SUBSCRIPTION_TIMEOUT == 0) {
+		send_mld_querys();
+	}
 
-	dolog(LOG_DEBUG, "Timeout - done\n");
+	expire_sources();
 }
 
 bool handleinterfaces(uint8_t *buffer);
@@ -2712,6 +2650,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	ecmh_timeout_offset = time(NULL) % ECMH_SUBSCRIPTION_TIMEOUT;
+
 	/* Daemonize */
 	if (g_conf->daemonize)
 	{
@@ -2742,7 +2682,7 @@ int main(int argc, char *argv[])
 
 	/* Timeout handling */
 	signal(SIGALRM, &timeout_signal);
-	alarm(ECMH_SUBSCRIPTION_TIMEOUT);
+	alarm(1);
 
 	/* Dump operations */
 	signal(SIGUSR1,	&sigusr1);
@@ -2857,7 +2797,7 @@ int main(int argc, char *argv[])
 
 			/* Reset the alarm */
 			signal(SIGALRM, &timeout_signal);
-			alarm(ECMH_SUBSCRIPTION_TIMEOUT);
+			alarm(1);
 		}
 
 		quit = !handleinterfaces(g_conf->buffer);
