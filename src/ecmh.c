@@ -1475,8 +1475,6 @@ D(
 				int lastgroup = expire_source(groupn, grpintn, src, now);
 				if (lastgroup)
 					break;
-				else
-					continue;
 			}
 		} else {
 			now = time(NULL);
