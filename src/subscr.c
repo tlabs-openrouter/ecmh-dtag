@@ -68,10 +68,13 @@ struct subscrnode *subscr_find(const struct list *list, const struct in6_addr *i
 bool subscr_unsub(struct list *list, const struct in6_addr *ipv6)
 {
 	struct subscrnode	*subscrn;
-	struct listnode		*ln;
+	struct listnode		*ln, copy_ln;
 
 	LIST_LOOP(list, subscrn, ln)
 	{
+		memcpy(&copy_ln, ln, sizeof(copy_ln));
+		ln = &copy_ln;
+
 		if (IN6_ARE_ADDR_EQUAL(ipv6, &subscrn->ipv6))
 		{
 			/* Delete the entry from the list */

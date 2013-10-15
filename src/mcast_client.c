@@ -28,6 +28,8 @@ static int _setsourcefilter (int s, uint32_t interface, const struct sockaddr *g
 	if (gf == NULL)
 		return -1;
 
+	memset(gf, 0, needed);
+
 	gf->gf_interface = interface;
 	memcpy (&gf->gf_group, group, grouplen);
 	gf->gf_fmode = fmode;
@@ -67,6 +69,9 @@ int mcast_socket_create6() {
 int mcast_join_group(int socket, int ifindex, struct sockaddr *group, socklen_t grouplen) {
 	int res;
 	struct group_req req;
+
+	memset(&req, 0, sizeof(req));
+
 	req.gr_interface = ifindex;
 	memcpy(&req.gr_group, group, grouplen);
 

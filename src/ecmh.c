@@ -1409,7 +1409,7 @@ void l4_ipv6_multicast(struct intnode *intn, struct ip6_hdr *iph, const uint16_t
 	struct groupnode	*groupn;
 	struct grpintnode	*grpintn;
 	struct subscrnode	*subscrn;
-	struct listnode		*in, *in2;
+	struct listnode		*in, copy_in, *in2;
 
 	struct msrc *src;
 	time_t now;
@@ -1464,6 +1464,9 @@ D(
 
 	LIST_LOOP(groupn->interfaces, grpintn, in)
 	{
+		memcpy(&copy_in, in, sizeof(copy_in));
+		in = &copy_in;
+
 		/* Don't send to the interface this packet originated from */
 		if (intn->ifindex == grpintn->ifindex) continue;
 

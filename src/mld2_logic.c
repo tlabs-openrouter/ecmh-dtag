@@ -2,14 +2,28 @@
 
 #include "mcast_client.h"
 
+// remove a source from a group
+
+// return 0 => only the source has been removed
+// return 1 => source and interface has been removed
+// return 2 => source, interface and group have been removed
+
 int expire_source(struct groupnode *groupn, struct grpintnode *grpintn, struct msrc *src, time_t now) {
 	if (src->timer <= now) {
 		dolog(LOG_DEBUG, "%s %u source timer <0 (%u<=%u). Removing source.\n", __FILE__, __LINE__, src->timer, now);
 		listnode_delete(grpintn->includes, src);
 		if (list_isempty(grpintn->includes)) {
 			dolog(LOG_DEBUG, "%s %u Last source of group->interface removed. Deleting group->interface.\n", __FILE__, __LINE__, src->timer, now);
+
+			// lastgroup == 0 => interface deleted
+			// lastgroup == 1 => interface and group node deleted
+
 			int lastgroup = remove_grpintn(groupn, grpintn);
 			handle_upstream_subscription(int_find(grpintn->ifindex));
+
+			// return 1 => interface deleted
+			// return 2 => interface and group node deleted
+
 			return lastgroup+1;
 		}
 	}
@@ -23,23 +37,42 @@ void expire_sources() {
 	struct grpintnode	*grpintn;
 	struct msrc 		*source;
 	struct listnode		*in, *in2, *in3;
+	struct listnode         copy_in, copy_in2, copy_in3;
 
 	int removed;
 
 	time_t now = time(NULL);
 
-	LIST_LOOP(g_conf->groups, groupn, in) {
+	// for each groupnode "groupn" from list "g_conf->groups" do...
+	LIST_LOOP(g_conf->groups, groupn, in) { /* loop_group */
+		memcpy(&copy_in, in, sizeof(copy_in));
+		in = &copy_in;
+
 		removed = 0;
-		LIST_LOOP(groupn->interfaces, grpintn, in2)	{
+		// for each grpintnode "grpintn" from list "groupn->interfaces" do...
+		LIST_LOOP(groupn->interfaces, grpintn, in2) { /* loop_interface */
+			memcpy(&copy_in2, in2, sizeof(copy_in2));
+			in2 = &copy_in2;
+
 			if (grpintn->filter_mode == MLD2_MODE_IS_INCLUDE) {
-				LIST_LOOP(grpintn->includes, source, in3) {
+				// for each msrc "source" from list "grpintn->includes" do...
+				LIST_LOOP(grpintn->includes, source, in3) { /* loop_source */
+					memcpy(&copy_in3, in3, sizeof(copy_in3));
+					in3 = &copy_in3;
+
 					removed = expire_source(groupn, grpintn, source, now);
-					if (removed) break;
+					// has at least the interface been deleted?
+					if (removed) {
+						break; // loop_source
+					}
 				}
-				if (removed==2) break;
+				// has the group been deleted, too?
+				if (removed==2) {
+					break; // loop_interface
+				}
 			} else {
 				if (grpintn->filter_timer <= now) {
-					if(mld2_switch_to_include(groupn, grpintn)) break;
+					if (mld2_switch_to_include(groupn, grpintn)) break; // loop_interface
 				}
 			}
 		}
@@ -56,6 +89,12 @@ static void set_source_timers(struct list *sources, const struct list *which_lis
 		source->timer = timer_value;
 	}
 }
+
+// delete a groupnode's interface node
+//  if this is the last interface for a group, delete groupnode as well
+
+// return 0, if only the interface node has been deleted
+// return 1, if both interface and group node have been deleted
 
 int remove_grpintn(struct groupnode *groupn, struct grpintnode *grpintn) {
 	listnode_delete(groupn->interfaces, grpintn);
@@ -287,6 +326,7 @@ bool handle_upstream_subscription(struct intnode *intn) {
 			}
 
 			struct sockaddr_in6 group;
+			memset(&group, 0, sizeof(group));
 			group.sin6_family = AF_INET6;
 			memcpy(&group.sin6_addr, mca, sizeof(*mca));
 
