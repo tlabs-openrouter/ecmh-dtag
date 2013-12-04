@@ -33,6 +33,7 @@
 #include <sched.h>
 #ifdef linux
 #include <netpacket/packet.h>
+#include <linux/filter.h>
 #endif
 #ifdef __FreeBSD__
 #include <fcntl.h>
@@ -109,7 +110,8 @@ struct conf
 	unsigned int		bufferlen;			/* Length of the buffer */
 
 #ifndef ECMH_BPF
-	int			rawsocket;			/* Single RAW socket for sending and receiving everything */
+	int			rawsocket;			/* Single RAW socket for receiving everything */
+	int			sendsocket;			/* Single RAW socket for sending everything */
 #else
 	bool			tunnelmode;			/* Intercept&handle proto-41 packets? */
 	struct list		*locals;			/* Local devices that could have tunnels */

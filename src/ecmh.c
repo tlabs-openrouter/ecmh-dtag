@@ -47,6 +47,18 @@ void l2_eth(struct intnode *intn, struct ether_header *eth, const unsigned int l
  */
 char ipv4_6to4_relay[4] = { '\xc0', '\x58', '\x63', '\x01'};
 
+/*
+ * BPF for "ip6 and multicast"
+ */
+struct sock_filter bpf[] = {
+    { 0x28, 0, 0, 0x0000000c },
+    { 0x15, 0, 3, 0x000086dd },
+    { 0x30, 0, 0, 0x00000000 },
+    { 0x45, 0, 1, 0x00000001 },
+    { 0x6, 0, 0, 0x0000ffff },
+    { 0x6, 0, 0, 0x00000000 },
+};
+
 /**************************************
   Functions
 **************************************/
@@ -219,7 +231,7 @@ void sendpacket6(struct intnode *intn, const struct ip6_hdr *iph, const uint16_t
 
 	/* Send the packet */
 	errno = 0;
-	sent = sendto(g_conf->rawsocket, iph, len, 0, (struct sockaddr *)&sa, sizeof(sa));
+	sent = sendto(g_conf->sendsocket, iph, len, 0, (struct sockaddr *)&sa, sizeof(sa));
 
 #else /* !ECMH_BPF */
 
@@ -2420,7 +2432,7 @@ bool handleinterfaces(uint8_t *buffer)
 		intn->stat_bytes_received+=len;
 
 		/* Handle the packet */
-		l2_ethtype(intn, buffer, len, ntohs(sa.sll_protocol));
+		l2_ethtype(intn, buffer+14, len, ntohs(sa.sll_protocol));
 	}
 	else
 	{
@@ -2514,6 +2526,7 @@ int main(int argc, char *argv[])
         struct sched_param      schedparam;
 	bool			quit = false;
 	struct intnode		*intn;
+	struct sock_fprog filter;
 
 	init();
 
@@ -2742,12 +2755,36 @@ int main(int argc, char *argv[])
 	 * anything we want (anything ???.... anythinggg... ;)
 	 * This is only available on Linux though
 	 */
-	g_conf->rawsocket = socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_ALL));
+	g_conf->rawsocket = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
 	if (g_conf->rawsocket < 0)
 	{
 		dolog(LOG_ERR, "Couldn't allocate a RAW socket\n");
 		return -1;
 	}
+
+	g_conf->sendsocket = socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_ALL));
+	if (g_conf->sendsocket < 0)
+	{
+		dolog(LOG_ERR, "Couldn't allocate a RAW send socket\n");
+		return -1;
+	}
+	int opt = 0;
+	if (setsockopt(g_conf->sendsocket, SOL_SOCKET, SO_RCVBUF, &opt, sizeof(opt)) < 0) {
+		dolog(LOG_ERR, "setsockopt cannot set receive buffer: %s\n", strerror(errno));
+		return -1;
+	}
+
+	filter.len = sizeof(bpf)/sizeof(struct sock_filter);
+	filter.filter = bpf;
+
+	if(setsockopt(g_conf->rawsocket, SOL_SOCKET, SO_ATTACH_FILTER, 
+				&filter, sizeof(filter)) < 0) {
+		dolog(LOG_ERR, "setsockopt error while setting bpf: %s\n", strerror(errno));
+		return -1;
+	} else {
+		dolog(LOG_DEBUG, "BPF set up with %i filter parts.\n", filter.len);
+	}
+
 
 #endif /* ECMH_BPF */
 
