@@ -66,9 +66,7 @@ int mrouter6_handlesocket(int fd) {
     iov[0].iov_len  = sizeof(buf);
     msg.msg_iov     = iov;
     msg.msg_iovlen  = 1;
-    dolog(LOG_WARNING, "A\n");
     int res = recvmsg(fd, &msg, 0);
-    dolog(LOG_WARNING, "B\n");
     struct mld_hdr* hdr = (struct mld_hdr*)msg.msg_iov->iov_base;
     m = (struct mrt6msg *)buf;
 
@@ -87,7 +85,7 @@ int mrouter6_handlesocket(int fd) {
         inet_ntop(AF_INET6, &m->im6_dst, dst, INET6_ADDRSTRLEN);
 
         int wanted_by_downstream = (m->im6_mif == 0) ? check_route(g_conf->downstream_id,&m->im6_src,&m->im6_dst) : 0;
-        dolog(LOG_WARNING, "got upcall: type=%i mif=%i src=%s dst=%s check=%i\n", m->im6_msgtype, m->im6_mif, src, dst, wanted_by_downstream);
+        dolog(LOG_DEBUG, "got upcall: type=%i mif=%i src=%s dst=%s check=%i\n", m->im6_msgtype, m->im6_mif, src, dst, wanted_by_downstream);
         if (wanted_by_downstream) {
             log_grp(LOG_INFO, "Adding route", &m->im6_src, &m->im6_dst);
             res = mrouter6_add_route(fd, 0, &m->im6_src, &m->im6_dst);
