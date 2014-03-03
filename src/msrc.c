@@ -39,10 +39,11 @@ int msrc_cmp(const struct msrc *a, const struct msrc *b) {
 void print_sources(struct list *sources) {
 	struct listnode     *ln;
 	struct msrc *src;
-	dolog(LOG_DEBUG, "...{\n");
+	int level = LOG_DEBUG;
+	dolog(LOG_DEBUG, "{\n");
 	LIST_LOOP(sources, src, ln){
-		log_ip6addr(LOG_DEBUG, &src->addr);
+		log_ip6addr(level, &src->addr);
 	}
-	dolog(LOG_DEBUG, "...}\n");
+	dolog(level, "}\n");
 }
 #endif

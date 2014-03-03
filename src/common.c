@@ -29,10 +29,18 @@ void dolog(int level, const char *fmt, ...)
 	va_end(ap);
 }
 
+void log_grp(int log_level, const char *text, const struct in6_addr *src, const struct in6_addr *grp) {
+    char addr1[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, src, addr1, sizeof(addr1));
+    char addr2[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, grp, addr2, sizeof(addr2));
+    dolog(log_level, "%s %i: %s: src=%s grp=%s\n", __FILE__, __LINE__, text, addr1, addr2);
+}
+
 void log_ip6addr(int log_level, const struct in6_addr *addr) {
-	char addr1[INET6_ADDRSTRLEN];
-	inet_ntop(AF_INET6, addr, addr1, sizeof(addr1));
-	dolog(LOG_DEBUG, "%s %llu\n", addr1, (long long unsigned int)addr1);
+    char addr1[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, addr, addr1, sizeof(addr1));
+    dolog(log_level, "%s\n", addr1);
 }
 
 int huprunning()

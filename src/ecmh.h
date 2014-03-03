@@ -104,6 +104,8 @@ struct conf
 	bool			mld1only;			/* Only MLDv1 ? */
 	bool			mld2only;			/* Only MLDv2 ? */
 #endif
+	bool			kernel;
+    int             mr6_fd;
 	bool			promisc;			/* Make interfaces promisc? (To be sure to receive all MLD's) */
 
 	uint8_t			*buffer;			/* Our buffer */
@@ -112,6 +114,7 @@ struct conf
 #ifndef ECMH_BPF
 	int			rawsocket;			/* Single RAW socket for receiving everything */
 	int			sendsocket;			/* Single RAW socket for sending everything */
+	int			mrsocket;			/* Multicast Router socket */
 #else
 	bool			tunnelmode;			/* Intercept&handle proto-41 packets? */
 	struct list		*locals;			/* Local devices that could have tunnels */

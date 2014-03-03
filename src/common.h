@@ -8,6 +8,8 @@
 
 void dolog(int level, const char *fmt, ...);
 void log_ip6addr(int log_level, const struct in6_addr *addr);
+void log_grp(int log_level, const char *text, const struct in6_addr *src, const struct in6_addr *grp);
+
 int huprunning(void);
 void savepid(void);
 void cleanpid(int i);

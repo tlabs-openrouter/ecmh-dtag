@@ -27,8 +27,11 @@
  
 ***************************************/
 
+#include <sys/select.h>
+
 #include "ecmh.h"
 #include "mcast_client.h"
+#include "kernel_routing.h"
 
 /* Configuration Variables */
 struct conf	*g_conf;
@@ -52,11 +55,23 @@ char ipv4_6to4_relay[4] = { '\xc0', '\x58', '\x63', '\x01'};
  */
 struct sock_filter bpf[] = {
     { 0x28, 0, 0, 0x0000000c },
+    { 0x15, 0, 8, 0x000086dd },
+    { 0x30, 0, 0, 0x00000000 },
+    { 0x45, 0, 6, 0x00000001 },
+    { 0x30, 0, 0, 0x00000014 },
+    { 0x15, 4, 0, 0x00000011 },
+    { 0x15, 0, 2, 0x0000002c },
+    { 0x30, 0, 0, 0x00000036 },
+    { 0x15, 1, 0, 0x00000011 },
+    { 0x6, 0, 0, 0x0000ffff },
+    { 0x6, 0, 0, 0x00000000 },
+/*
+    { 0x28, 0, 0, 0x0000000c },
     { 0x15, 0, 3, 0x000086dd },
     { 0x30, 0, 0, 0x00000000 },
     { 0x45, 0, 1, 0x00000001 },
     { 0x6, 0, 0, 0x0000ffff },
-    { 0x6, 0, 0, 0x00000000 },
+    { 0x6, 0, 0, 0x00000000 },*/
 };
 
 /**************************************
@@ -1319,7 +1334,10 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 		ngrec--;
 	}
 	
-	if (handle_upstream) handle_upstream_subscription(intn);
+	if (handle_upstream) {
+        handle_upstream_subscription(intn);
+        expire_routes(g_conf->mr6_fd, 0);
+    }
 
 	return;
 
@@ -2096,6 +2114,8 @@ void init(void)
 #else
 	g_conf->promisc			= false;	/* Sometimes needed, but usually not */
 #endif
+	
+	g_conf->kernel			= false;
 
 	/* Initialize our list of groups */
 	g_conf->groups			= list_new();
@@ -2503,6 +2523,7 @@ static struct option const long_options[] = {
 	{"foreground",		no_argument,		NULL, 'f'},
 	{"upstream",		required_argument,	NULL, 'i'},
 	{"downstream",		required_argument,	NULL, 'd'},
+	{"kernel",		no_argument,		NULL, 'k'},
 	{"promisc",		no_argument,		NULL, 'p'},
 	{"nopromisc",		no_argument,		NULL, 'P'},
 	{"user",		required_argument,	NULL, 'u'},
@@ -2531,7 +2552,7 @@ int main(int argc, char *argv[])
 	init();
 
 	/* Handle arguments */
-	while ((i = getopt_long(argc, argv, "fi:d:pPu:"
+	while ((i = getopt_long(argc, argv, "fi:d:kpPu:"
 #ifdef ECMH_BPF
 		"tT"
 #endif
@@ -2567,6 +2588,9 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 			g_conf->downstream = strdup(optarg);
+			break;
+		case 'k':
+			g_conf->kernel = true;
 			break;
 		case 'p':
 			g_conf->promisc = true;
@@ -2643,6 +2667,7 @@ int main(int argc, char *argv[])
 				,
 				argv[0]);
 			fprintf(stderr,
+				"-k, --kernel               Use in-kernel packet forwarding\n"
 				"-p, --promisc              Make interfaces promisc"
 #ifdef ECMH_BPF
 				" (default)"
@@ -2822,6 +2847,32 @@ int main(int argc, char *argv[])
 
 	send_mld_querys();
 
+	fd_set rfds;
+
+	if (g_conf->kernel) {
+		g_conf->mr6_fd = mrouter_init();
+		if (g_conf->mr6_fd<= 0) {
+			perror("mrouter6 init");
+		} else {
+			dolog(LOG_WARNING, "mrouter6 fd: %i\n", g_conf->mr6_fd);
+			int ret;
+			ret = mrouter6_addmif(g_conf->mr6_fd, 0, 0, g_conf->upstream_id); 
+			dolog(LOG_WARNING, "ret=%i %i\n", ret, g_conf->upstream_id);
+			if (ret && ret != 6)
+				perror("ret upstream");
+			ret = mrouter6_addmif(g_conf->mr6_fd, 1, 0, g_conf->downstream_id); 
+			dolog(LOG_WARNING, "ret=%i %i\n", ret, g_conf->downstream_id);
+			if (ret && ret != 6)
+				perror("ret downstream");
+			if (ret) {
+				dolog(LOG_WARNING, "Error setting up kernel routing. Falling back to user-space.\n");
+				//    g_conf->kernel = false;
+			}
+		}
+	}
+
+    int nfds = g_conf->mr6_fd > g_conf->rawsocket ? g_conf->mr6_fd : g_conf->rawsocket;
+
 	while (!g_conf->quit && !quit)
 	{
 		/* Was a timeout set? */
@@ -2838,7 +2889,26 @@ int main(int argc, char *argv[])
 			alarm(1);
 		}
 
-		quit = !handleinterfaces(g_conf->buffer);
+		FD_ZERO(&rfds);
+		FD_SET(g_conf->mr6_fd, &rfds);
+		FD_SET(g_conf->rawsocket, &rfds);
+
+		int r = select(nfds, &rfds, NULL, NULL, NULL);
+		if (r == -1 && errno!=EINTR) {
+			perror("reading sockets");
+			quit=1;
+		}
+        if (FD_ISSET(g_conf->mr6_fd, &rfds)) {
+	    dolog(LOG_INFO, "a\n");
+            mrouter6_handlesocket(g_conf->mr6_fd);
+	    dolog(LOG_INFO, "b\n");
+            quit = 0;
+        }
+	    dolog(LOG_INFO, "c\n");
+        if (FD_ISSET(g_conf->rawsocket, &rfds)) {
+            quit = !handleinterfaces(g_conf->buffer);
+        }
+	    dolog(LOG_INFO, "d\n");
 	}
 
 	/* Dump the stats one last time */
@@ -2875,6 +2945,14 @@ int main(int argc, char *argv[])
 #ifndef ECMH_BPF
 	close(g_conf->rawsocket);
 #endif
+
+    if (g_conf->kernel) {
+        for (int I = 0; I < 2; I++) {
+            int res = mrouter6_delmif(g_conf->mr6_fd, I);
+            if (res)
+                dolog(LOG_WARNING, "Removing VIF %i res=%i!\n", I, res);
+        }
+    }
 
 	/* Free the config memory */
 	free(g_conf);

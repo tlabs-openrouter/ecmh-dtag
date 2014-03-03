@@ -173,22 +173,26 @@ struct list * list_difference(const struct list *a, const struct list *b) {
 }
 
 /* Add new data to the list. */
-void listnode_add(struct list *list, void *val)
+struct listnode* listnode_add(struct list *list, void *val)
 {
 	struct listnode *node;
 
 	node = listnode_new();
-	if (!node) return;
+	if (node) {
 
-	node->prev = list->tail;
-	node->data = val;
+		node->prev = list->tail;
+		node->data = val;
 
-	if (list->head == NULL) list->head = node;
-	else list->tail->next = node;
-	list->tail = node;
+		if (list->head == NULL) list->head = node;
+		else list->tail->next = node;
+		list->tail = node;
 
-	if (list->count < 0) list->count = 0;
-	list->count++;
+		if (list->count < 0) list->count = 0;
+		list->count++;
+
+	}
+
+	return node;
 }
 
 /* Delete specific date pointer from the list. */

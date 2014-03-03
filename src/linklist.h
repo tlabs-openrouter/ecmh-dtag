@@ -33,7 +33,7 @@ struct list
 /* Prototypes. */
 struct list	*list_new(void);
 void		list_free(struct list *);
-void		listnode_add(struct list *, void *);
+struct listnode * listnode_add(struct list *, void *);
 void		listnode_delete(struct list *, void *);
 void		list_delete (struct list *);
 void		list_delete_all_node (struct list *);

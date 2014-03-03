@@ -1,6 +1,7 @@
 #include "ecmh.h"
 
 #include "mcast_client.h"
+#include "kernel_routing.h"
 
 // remove a source from a group
 
@@ -11,6 +12,7 @@
 int expire_source(struct groupnode *groupn, struct grpintnode *grpintn, struct msrc *src, time_t now) {
 	if (src->timer <= now) {
 		dolog(LOG_DEBUG, "%s %u source timer <0 (%u<=%u). Removing source.\n", __FILE__, __LINE__, src->timer, now);
+        log_ip6addr(LOG_DEBUG, &src->addr);
 		listnode_delete(grpintn->includes, src);
 		if (list_isempty(grpintn->includes)) {
 			dolog(LOG_DEBUG, "%s %u Last source of group->interface removed. Deleting group->interface.\n", __FILE__, __LINE__, src->timer, now);
@@ -341,6 +343,8 @@ bool handle_upstream_subscription(struct intnode *intn) {
 #endif
 		close(old_upstream_socket);
 	}
+
+    expire_routes(g_conf->mr6_fd, 0);
 
 #ifdef DEBUG
 	dolog(LOG_DEBUG, "%s:%u handle_upstream_subscription() exit.\n", __FILE__, __LINE__);
