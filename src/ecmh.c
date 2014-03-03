@@ -2890,25 +2890,24 @@ int main(int argc, char *argv[])
 		}
 
 		FD_ZERO(&rfds);
-		FD_SET(g_conf->mr6_fd, &rfds);
 		FD_SET(g_conf->rawsocket, &rfds);
+		FD_SET(g_conf->mr6_fd, &rfds);
 
-		int r = select(nfds, &rfds, NULL, NULL, NULL);
-		if (r == -1 && errno!=EINTR) {
-			perror("reading sockets");
-			quit=1;
+		int r = select(nfds+1, &rfds, NULL, NULL, NULL);
+		if (r == -1) {
+			if (errno!=EINTR) {
+				perror("reading sockets");
+				quit=1;
+			}
+		} else {
+			if (FD_ISSET(g_conf->mr6_fd, &rfds)) {
+				mrouter6_handlesocket(g_conf->mr6_fd);
+				quit = 0;
+			}
+			if (FD_ISSET(g_conf->rawsocket, &rfds)) {
+				quit = !handleinterfaces(g_conf->buffer);
+			}
 		}
-        if (FD_ISSET(g_conf->mr6_fd, &rfds)) {
-	    dolog(LOG_INFO, "a\n");
-            mrouter6_handlesocket(g_conf->mr6_fd);
-	    dolog(LOG_INFO, "b\n");
-            quit = 0;
-        }
-	    dolog(LOG_INFO, "c\n");
-        if (FD_ISSET(g_conf->rawsocket, &rfds)) {
-            quit = !handleinterfaces(g_conf->buffer);
-        }
-	    dolog(LOG_INFO, "d\n");
 	}
 
 	/* Dump the stats one last time */
