@@ -199,7 +199,7 @@ int expire_routes(int fd, int downstream) {
             log_grp(LOG_INFO, "Deleting route", &route->src, &route->grp);
             tmp = ln;
             ln = ln->next;
-            //free(tmp->data);
+            free(tmp->data);
             list_delete_node(routes, tmp);
             if (!ln) break;
         }
