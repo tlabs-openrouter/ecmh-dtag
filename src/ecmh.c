@@ -2911,7 +2911,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Dump the stats one last time */
-	sigusr1(SIGUSR1);
+	//sigusr1(SIGUSR1);
 
 	/* Show the message in the log */
 	dolog(LOG_INFO, "Shutdown, thank you for using ecmh\n");
