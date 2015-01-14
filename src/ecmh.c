@@ -1333,15 +1333,13 @@ void l4_ipv6_icmpv6_mld2_report(struct intnode *intn, const struct ip6_hdr *iph,
 		grec = (struct mld2_grec *)(((char *)src) + grec->grec_auxwords);
 		ngrec--;
 	}
-	
-	if (handle_upstream) {
-        handle_upstream_subscription(intn);
-        expire_routes(g_conf->mr6_fd, 0);
-    }
-
-	return;
 
 out:
+	if (handle_upstream) {
+		handle_upstream_subscription(intn);
+		expire_routes(g_conf->mr6_fd, 0);
+	}
+
 	return;
 }
 #endif /* ECMH_SUPPORT_MLD2 */
